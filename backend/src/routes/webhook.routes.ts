@@ -46,7 +46,7 @@ router.post('/strava/subscribe', async (_req: Request, res: Response) => {
     const response = await axios.default.post('https://www.strava.com/api/v3/push_subscriptions', {
       client_id: config.strava.clientId,
       client_secret: config.strava.clientSecret,
-      callback_url: `${process.env.BACKEND_URL || 'http://localhost:3001'}/webhook/strava`,
+      callback_url: `${config.backendUrl}/webhook/strava`,
       verify_token: config.strava.webhookVerifyToken,
     });
     res.json(response.data);

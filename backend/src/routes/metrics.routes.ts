@@ -91,6 +91,7 @@ router.get('/tdee', async (req: Request, res: Response) => {
   }
 
   const ageYears = Math.floor((Date.now() - new Date(user.birthDate).getTime()) / (1000 * 60 * 60 * 24 * 365));
+  // Default to male Mifflin-St Jeor; users can refine via manual metric updates
   const tdee = calculateTDEE(user.weight, user.height, ageYears, true);
 
   return res.json({ tdee, weight: user.weight, height: user.height, age: ageYears });

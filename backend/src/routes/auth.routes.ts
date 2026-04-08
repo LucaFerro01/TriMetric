@@ -1,10 +1,19 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getAuthUrl, exchangeCode } from '../services/strava.service';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
 
 const router = Router();
 
@@ -14,7 +23,7 @@ router.get('/strava', (_req: Request, res: Response) => {
 });
 
 // GET /auth/strava/callback
-router.get('/strava/callback', async (req: Request, res: Response) => {
+router.get('/strava/callback', authLimiter, async (req: Request, res: Response) => {
   const { code, error } = req.query as { code?: string; error?: string };
 
   if (error || !code) {
@@ -59,7 +68,7 @@ router.get('/strava/callback', async (req: Request, res: Response) => {
 });
 
 // GET /auth/me - get current user
-router.get('/me', async (req: Request, res: Response) => {
+router.get('/me', authLimiter, async (req: Request, res: Response) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No token' });
 

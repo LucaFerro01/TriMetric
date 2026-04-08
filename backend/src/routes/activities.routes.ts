@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { db } from '../db';
 import { activities, streamData } from '../db/schema';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
@@ -12,6 +13,14 @@ import { aggregateDailyMetrics } from '../services/metrics.service';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
+
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Upload limit reached, please try again later' },
+});
 
 function getUserId(req: Request): string | null {
   const token = req.headers.authorization?.replace('Bearer ', '');
@@ -97,33 +106,36 @@ router.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /activities/upload - FIT or GPX file upload
-router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/upload', uploadLimiter, upload.single('file'), async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   if (!req.file) return res.status(400).json({ error: 'No file' });
 
-  const ext = path.extname(req.file.originalname).toLowerCase();
+  // Sanitize extension from originalname — only use last extension, lowercase
+  const safeExt = path.extname(req.file.originalname).toLowerCase().replace(/[^.a-z]/g, '');
+  // req.file.path is multer-generated (random filename in uploads/ dir) — safe to use directly
+  const uploadedPath = req.file.path;
   let parsed;
 
   try {
-    if (ext === '.fit') {
-      parsed = await parseFitFile(req.file.path);
-    } else if (ext === '.gpx') {
-      parsed = await parseGpxFile(req.file.path);
+    if (safeExt === '.fit') {
+      parsed = await parseFitFile(uploadedPath);
+    } else if (safeExt === '.gpx') {
+      parsed = await parseGpxFile(uploadedPath);
     } else {
-      fs.unlinkSync(req.file.path);
+      fs.unlinkSync(uploadedPath);
       return res.status(400).json({ error: 'Unsupported file type. Use .fit or .gpx' });
     }
   } catch (err) {
-    fs.unlinkSync(req.file.path);
+    fs.unlinkSync(uploadedPath);
     return res.status(400).json({ error: 'Failed to parse file', details: String(err) });
   } finally {
-    if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
   }
 
   const [activity] = await db.insert(activities).values({
     userId,
-    source: ext === '.fit' ? 'fit' : 'gpx',
+    source: safeExt === '.fit' ? 'fit' : 'gpx',
     activityType: parsed.activityType,
     startTime: parsed.startTime.toISOString(),
     duration: Math.round(parsed.duration),
