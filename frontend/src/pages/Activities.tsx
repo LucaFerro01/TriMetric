@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { getActivities } from '../api/activities';
 import type { Activity } from '../api/activities';
 import ActivityCard from '../components/ActivityCard';
 import { Search } from 'lucide-react';
 
 const TYPES = ['all', 'run', 'ride', 'swim', 'walk', 'hike', 'strength', 'workout'];
+const LIMIT = 20;
 
 export default function Activities() {
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -12,28 +13,35 @@ export default function Activities() {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [offset, setOffset] = useState(0);
-  const LIMIT = 20;
 
-  const load = useCallback(async (reset = false) => {
+  const loadMore = async () => {
     setLoading(true);
-    const newOffset = reset ? 0 : offset;
     try {
       const rows = await getActivities({
         type: typeFilter !== 'all' ? typeFilter : undefined,
         limit: LIMIT,
-        offset: newOffset,
+        offset,
       });
-      setActivities((prev) => (reset ? rows : [...prev, ...rows]));
-      if (!reset) setOffset(newOffset + LIMIT);
+      setActivities((prev) => [...prev, ...rows]);
+      setOffset((prev) => prev + LIMIT);
     } finally {
       setLoading(false);
     }
-  }, [typeFilter, offset]);
+  };
 
   useEffect(() => {
     setOffset(0);
-    load(true);
-  }, [typeFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+    setActivities([]);
+    setLoading(true);
+    getActivities({
+      type: typeFilter !== 'all' ? typeFilter : undefined,
+      limit: LIMIT,
+      offset: 0,
+    })
+      .then((rows) => setActivities(rows))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, [typeFilter]);
 
   const filtered = search
     ? activities.filter((a) =>
@@ -86,7 +94,7 @@ export default function Activities() {
             <div className="text-center py-12 text-slate-500">No activities found</div>
           )}
           {!loading && filtered.length === activities.length && activities.length >= LIMIT && (
-            <button onClick={() => load()} className="w-full py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-100 text-sm transition-colors">
+            <button onClick={loadMore} className="w-full py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-400 hover:text-slate-100 text-sm transition-colors">
               Load more
             </button>
           )}
