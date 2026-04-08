@@ -1,0 +1,9 @@
+{
+  "name": "trimetric",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter './backend' --filter './frontend' dev",
+    "build": "pnpm --filter './backend' build && pnpm --filter './frontend' build",
+    "lint": "pnpm --recursive lint"
+  }
+}
