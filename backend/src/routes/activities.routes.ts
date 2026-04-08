@@ -111,8 +111,8 @@ router.post('/upload', uploadLimiter, upload.single('file'), async (req: Request
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
   if (!req.file) return res.status(400).json({ error: 'No file' });
 
-  // Sanitize extension from originalname — only use last extension, lowercase
-  const safeExt = path.extname(req.file.originalname).toLowerCase().replace(/[^.a-z]/g, '');
+  // Sanitize extension from originalname — extract only final .ext, allow only .fit/.gpx
+  const safeExt = (req.file.originalname.match(/\.[a-z]+$/i)?.[0] || '').toLowerCase();
   // req.file.path is multer-generated (random filename in uploads/ dir) — safe to use directly
   const uploadedPath = req.file.path;
   let parsed;

@@ -28,8 +28,8 @@ export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): 
  * Estimate FTP from power data (best 20-min power × 0.95).
  * @param powerData Array of power values in watts
  */
-export function estimateFTP(powerData: number[]): number {
-  if (powerData.length < 1200) return 0;
+export function estimateFTP(powerData: number[]): number | null {
+  if (powerData.length < 1200) return null;
   // Sort descending, take best 1200 data points (20 min at 1Hz)
   const sorted = [...powerData].sort((a, b) => b - a);
   const best1200 = sorted.slice(0, 1200);

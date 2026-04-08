@@ -93,7 +93,7 @@ router.get('/me', authLimiter, async (req: Request, res: Response) => {
 });
 
 // PATCH /auth/profile - update user profile
-router.patch('/profile', async (req: Request, res: Response) => {
+router.patch('/profile', authLimiter, async (req: Request, res: Response) => {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'No token' });
 

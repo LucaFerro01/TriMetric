@@ -1,4 +1,15 @@
 import * as fs from 'fs';
+import * as path from 'path';
+
+/** Validate that a file path stays within an allowed directory. */
+function validateFilePath(filePath: string, allowedDir: string): string {
+  const resolved = path.resolve(filePath);
+  const allowedResolved = path.resolve(allowedDir);
+  if (!resolved.startsWith(allowedResolved + path.sep) && resolved !== allowedResolved) {
+    throw new Error('Invalid file path: outside allowed directory');
+  }
+  return resolved;
+}
 
 export interface ParsedActivity {
   activityType: string;
@@ -22,6 +33,7 @@ export interface ParsedActivity {
 }
 
 export async function parseFitFile(filePath: string): Promise<ParsedActivity> {
+  const safePath = validateFilePath(filePath, 'uploads');
   const { default: FitParser } = await import('fit-file-parser');
   const fitParser = new FitParser({ 
     force: true, 
@@ -31,7 +43,7 @@ export async function parseFitFile(filePath: string): Promise<ParsedActivity> {
     elapsedRecordField: true,
   });
 
-  const buffer = fs.readFileSync(filePath);
+  const buffer = fs.readFileSync(safePath);
 
   return new Promise((resolve, reject) => {
     fitParser.parse(buffer, (err: Error | null, data: Record<string, unknown>) => {
@@ -75,7 +87,8 @@ export async function parseFitFile(filePath: string): Promise<ParsedActivity> {
 }
 
 export async function parseGpxFile(filePath: string): Promise<ParsedActivity> {
-  const content = fs.readFileSync(filePath, 'utf-8');
+  const safePath = validateFilePath(filePath, 'uploads');
+  const content = fs.readFileSync(safePath, 'utf-8');
   
   // Simple GPX parser (key fields)
   const trkptRegex = /<trkpt lat="([\d.-]+)" lon="([\d.-]+)">([\s\S]*?)<\/trkpt>/g;
