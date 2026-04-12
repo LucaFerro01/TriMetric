@@ -72,6 +72,37 @@ export async function fetchActivity(userId: string, stravaActivityId: number) {
   return response.data;
 }
 
+export async function syncStravaActivities(userId: string): Promise<number> {
+  let page = 1;
+  let synced = 0;
+  const perPage = 100;
+  const maxPages = 500; // guard against infinite loop; 500 * 100 = 50,000 activities
+
+  while (page <= maxPages) {
+    const token = await getValidToken(userId);
+    const response = await axios.get<Record<string, unknown>[]>(
+      `${STRAVA_BASE}/athlete/activities`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { per_page: perPage, page },
+      }
+    );
+
+    const items = response.data;
+    if (!items || items.length === 0) break;
+
+    for (const item of items) {
+      await saveStravaActivity(userId, item);
+      synced++;
+    }
+
+    if (items.length < perPage) break;
+    page++;
+  }
+
+  return synced;
+}
+
 export async function fetchActivityStreams(userId: string, stravaActivityId: number) {
   const token = await getValidToken(userId);
   const keys = 'time,heartrate,watts,cadence,velocity_smooth,altitude,latlng';

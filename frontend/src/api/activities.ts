@@ -50,6 +50,11 @@ export async function deleteActivity(id: string): Promise<void> {
   await client.delete(`/activities/${id}`);
 }
 
+export async function syncFromStrava(): Promise<{ synced: number }> {
+  const res = await client.post('/activities/strava/sync');
+  return res.data;
+}
+
 export async function uploadFile(file: File): Promise<Activity> {
   const form = new FormData();
   form.append('file', file);
