@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { getAuthUrl, exchangeCode } from '../services/strava.service';
+import { syncStravaActivities } from '../services/strava.service';
 import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -38,6 +39,7 @@ router.get('/strava/callback', authLimiter, async (req: Request, res: Response) 
     const existing = await db.select().from(users).where(eq(users.stravaId, String(athlete.id)));
 
     let userId: string;
+    const isNewUser = existing.length === 0;
     if (existing.length > 0) {
       await db.update(users).set({
         stravaAccessToken: tokens.access_token,
@@ -60,6 +62,16 @@ router.get('/strava/callback', authLimiter, async (req: Request, res: Response) 
     }
 
     const jwtToken = jwt.sign({ userId }, config.jwtSecret, { expiresIn: '7d' });
+
+    // On first login, kick off a background historical sync so activities appear immediately
+    if (isNewUser) {
+      syncStravaActivities(userId).then((count) => {
+        console.log(`[Auth] Initial Strava sync: ${count} activities imported for user ${userId}`);
+      }).catch((err) => {
+        console.error(`[Auth] Initial Strava sync failed for user ${userId}:`, err);
+      });
+    }
+
     return res.redirect(`${config.frontendUrl}/auth/callback?token=${jwtToken}`);
   } catch (err) {
     console.error('[Auth] Strava callback error:', err);

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getActivities } from '../api/activities';
+import { getActivities, syncFromStrava } from '../api/activities';
 import type { Activity } from '../api/activities';
 import ActivityCard from '../components/ActivityCard';
-import { Search } from 'lucide-react';
+import { RefreshCw, Search } from 'lucide-react';
 
 const TYPES = ['all', 'run', 'ride', 'swim', 'walk', 'hike', 'strength', 'workout'];
 const LIMIT = 20;
@@ -10,9 +10,32 @@ const LIMIT = 20;
 export default function Activities() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [offset, setOffset] = useState(0);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    setNotification(null);
+    try {
+      const result = await syncFromStrava();
+      // Reload the list after sync
+      const rows = await getActivities({
+        type: typeFilter !== 'all' ? typeFilter : undefined,
+        limit: LIMIT,
+        offset: 0,
+      });
+      setActivities(rows);
+      setOffset(LIMIT);
+      setNotification({ type: 'success', message: `Sync complete: ${result.synced} activities imported from Strava.` });
+    } catch {
+      setNotification({ type: 'error', message: 'Sync failed. Please try again.' });
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const loadMore = async () => {
     setLoading(true);
@@ -52,7 +75,23 @@ export default function Activities() {
 
   return (
     <div className="space-y-4 md:ml-56">
-      <h1 className="text-2xl font-bold text-slate-100">Activities</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-100">Activities</h1>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-colors"
+        >
+          <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+          {syncing ? 'Syncing…' : 'Sync from Strava'}
+        </button>
+      </div>
+
+      {notification && (
+        <div className={`px-4 py-3 rounded-lg text-sm ${notification.type === 'success' ? 'bg-green-900/50 border border-green-700 text-green-300' : 'bg-red-900/50 border border-red-700 text-red-300'}`}>
+          {notification.message}
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
