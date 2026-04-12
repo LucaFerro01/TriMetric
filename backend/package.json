@@ -8,8 +8,9 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "lint": "eslint src --ext .ts",
-    "migrate": "drizzle-kit migrate",
-    "migrate:generate": "drizzle-kit generate"
+    "migrate": "tsx src/db/migrate.ts",
+    "migrate:generate": "drizzle-kit generate:pg",
+    "db:push": "drizzle-kit push:pg"
   },
   "dependencies": {
     "axios": "^1.6.5",
