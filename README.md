@@ -44,8 +44,12 @@ cp .env.example backend/.env
 # 3. Start infrastructure
 docker compose up -d
 
-# 4. Run database migrations
+# 4. Generate and run database migrations
+pnpm --filter backend migrate:generate
 pnpm --filter backend migrate
+
+# Alternatively, for a quick development setup (skips migration files):
+# pnpm --filter backend db:push
 
 # 5. Start development servers
 pnpm dev
