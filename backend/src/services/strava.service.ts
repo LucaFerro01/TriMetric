@@ -3,6 +3,7 @@ import { db } from '../db';
 import { users, activities } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { config } from '../config';
+import { estimateCaloriesBurned } from './metrics.service';
 
 const STRAVA_BASE = 'https://www.strava.com/api/v3';
 const STRAVA_AUTH = 'https://www.strava.com/oauth';
@@ -127,6 +128,12 @@ export async function saveStravaActivity(userId: string, stravaActivity: Record<
     .from(activities)
     .where(eq(activities.externalId, String(stravaActivity.id)));
 
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const weightKg = user?.weight ?? 70;
+  const estimatedCalories = stravaActivity.calories != null
+    ? Math.round(stravaActivity.calories as number)
+    : estimateCaloriesBurned(mapActivityType(stravaActivity.type as string), stravaActivity.moving_time as number, weightKg);
+
   const data = {
     userId,
     externalId: String(stravaActivity.id),
@@ -143,9 +150,13 @@ export async function saveStravaActivity(userId: string, stravaActivity: Record<
     maxPower: stravaActivity.max_watts != null ? Math.round(stravaActivity.max_watts as number) : null,
     avgSpeed: stravaActivity.average_speed as number,
     maxSpeed: stravaActivity.max_speed as number,
-    calories: stravaActivity.calories != null ? Math.round(stravaActivity.calories as number) : null,
+    calories: estimatedCalories,
     avgCadence: stravaActivity.average_cadence != null ? Math.round(stravaActivity.average_cadence as number) : null,
-    rawData: stravaActivity,
+    rawData: {
+      ...stravaActivity,
+      caloriesEstimated: stravaActivity.calories == null,
+      caloriesSource: stravaActivity.calories != null ? 'strava' : 'estimated',
+    },
   };
 
   if (existing.length > 0) {

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db';
-import { activities, streamData } from '../db/schema';
+import { activities, streamData, users } from '../db/schema';
 import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
@@ -10,9 +10,10 @@ import path from 'path';
 import fs from 'fs';
 import { parseFitFile, parseGpxFile } from '../services/fitgpx.service';
 import { aggregateDailyMetrics } from '../services/metrics.service';
+import { estimateCaloriesBurned } from '../services/metrics.service';
 import { syncStravaActivities } from '../services/strava.service';
 
-const router = Router();
+const router: Router = Router();
 const upload = multer({ dest: 'uploads/' });
 
 const uploadLimiter = rateLimit({
@@ -61,7 +62,19 @@ router.get('/summary', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   const { period = '30d' } = req.query as { period?: string };
-  const days = period === '7d' ? 7 : period === '90d' ? 90 : period === '365d' ? 365 : 30;
+  const days = period === '1d'
+    ? 1
+    : period === '7d'
+      ? 7
+      : period === '30d'
+        ? 30
+        : period === '90d'
+          ? 90
+          : period === '180d'
+            ? 180
+            : period === '365d'
+              ? 365
+              : 30;
   const from = new Date();
   from.setDate(from.getDate() - days);
 
@@ -148,6 +161,9 @@ router.post('/upload', uploadLimiter, upload.single('file'), async (req: Request
     if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
   }
 
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const estimatedCalories = parsed.calories ?? estimateCaloriesBurned(parsed.activityType, Math.round(parsed.duration), user?.weight);
+
   const [activity] = await db.insert(activities).values({
     userId,
     source: safeExt === '.fit' ? 'fit' : 'gpx',
@@ -159,8 +175,12 @@ router.post('/upload', uploadLimiter, upload.single('file'), async (req: Request
     avgHeartRate: parsed.avgHeartRate,
     maxHeartRate: parsed.maxHeartRate,
     avgPower: parsed.avgPower,
-    calories: parsed.calories,
-    rawData: parsed.rawData,
+    calories: estimatedCalories,
+    rawData: {
+      ...parsed.rawData,
+      caloriesEstimated: parsed.calories == null,
+      caloriesSource: parsed.calories != null ? 'file' : 'estimated',
+    },
   }).returning();
 
   if (parsed.streams && Object.keys(parsed.streams).length > 0) {

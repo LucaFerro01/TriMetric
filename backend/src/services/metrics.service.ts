@@ -25,6 +25,15 @@ export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): 
 }
 
 /**
+ * Estimate VO2max from a cycling effort using power-to-weight as a proxy.
+ */
+export function estimateVO2MaxBike(powerWatts: number, weightKg: number): number {
+  if (powerWatts <= 0 || weightKg <= 0) return 0;
+  const wattsPerKg = powerWatts / weightKg;
+  return 10.8 * wattsPerKg + 7;
+}
+
+/**
  * Estimate FTP from power data (best 20-min power × 0.95).
  * @param powerData Array of power values in watts
  */
@@ -51,6 +60,10 @@ export function calculateCaloriesMET(activityType: string, durationSeconds: numb
   const met = metValues[activityType] || 5.0;
   const durationHours = durationSeconds / 3600;
   return Math.round(met * weightKg * durationHours);
+}
+
+export function estimateCaloriesBurned(activityType: string, durationSeconds: number, weightKg?: number | null): number {
+  return calculateCaloriesMET(activityType, durationSeconds, weightKg ?? 70);
 }
 
 /**

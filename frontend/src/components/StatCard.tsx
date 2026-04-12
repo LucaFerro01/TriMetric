@@ -4,12 +4,13 @@ interface StatCardProps {
   label: string;
   value: string | number;
   unit?: string;
+  subtitle?: string;
   icon?: ReactNode;
   trend?: number;
   color?: string;
 }
 
-export default function StatCard({ label, value, unit, icon, trend, color = 'orange' }: StatCardProps) {
+export default function StatCard({ label, value, unit, subtitle, icon, trend, color = 'orange' }: StatCardProps) {
   const colorMap: Record<string, string> = {
     orange: 'text-orange-400 bg-orange-500/10',
     blue: 'text-blue-400 bg-blue-500/10',
@@ -27,6 +28,7 @@ export default function StatCard({ label, value, unit, icon, trend, color = 'ora
         <span className="text-2xl font-bold text-slate-100">{value}</span>
         {unit && <span className="text-slate-400 text-sm">{unit}</span>}
       </div>
+      {subtitle && <div className="text-xs text-slate-500 mt-1 leading-tight">{subtitle}</div>}
       {trend !== undefined && (
         <div className={`text-xs mt-1 ${trend >= 0 ? 'text-green-400' : 'text-red-400'}`}>
           {trend >= 0 ? '↑' : '↓'} {Math.abs(trend).toFixed(1)}% vs last period

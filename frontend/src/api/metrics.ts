@@ -22,13 +22,39 @@ export interface WeeklyMetric {
   totalElevation: number;
 }
 
+export interface Vo2MaxPoint {
+  date: string;
+  vo2max: number;
+  activityId: string;
+}
+
+export interface Vo2MaxHistoryResponse {
+  run: Vo2MaxPoint[];
+  bike: Vo2MaxPoint[];
+}
+
+export interface TodayEnergy {
+  date: string;
+  baseCalories: number | null;
+  activityCalories: number;
+  totalCalories: number;
+  activitiesCount: number;
+  weight?: number;
+  message?: string;
+}
+
 export async function getMetrics(days?: number): Promise<MetricRecord[]> {
   const res = await client.get('/metrics', { params: { days } });
   return res.data;
 }
 
-export async function getVO2MaxHistory(): Promise<{ date: string; vo2max: number; activityId: string }[]> {
+export async function getVO2MaxHistory(): Promise<Vo2MaxHistoryResponse> {
   const res = await client.get('/metrics/vo2max');
+  return res.data;
+}
+
+export async function getTodayEnergy(): Promise<TodayEnergy> {
+  const res = await client.get('/metrics/today-energy');
   return res.data;
 }
 

@@ -3,24 +3,41 @@ import { Activity as ActivityIcon, TrendingUp, Clock, Flame } from 'lucide-react
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { getSummary } from '../api/activities';
 import type { ActivitySummary } from '../api/activities';
-import { getWeeklyMetrics } from '../api/metrics';
+import { getWeeklyMetrics, getTodayEnergy } from '../api/metrics';
 import type { WeeklyMetric } from '../api/metrics';
 import StatCard from '../components/StatCard';
 import { formatDistance, formatDuration } from '../utils/format';
 import { useAuth } from '../hooks/useAuth';
 
+type DashboardPeriod = '1d' | '7d' | '30d' | '90d' | '180d' | '365d';
+
+const PERIOD_OPTIONS: Array<{ value: DashboardPeriod; label: string; days: number }> = [
+  { value: '1d', label: 'Day', days: 1 },
+  { value: '7d', label: 'Week', days: 7 },
+  { value: '30d', label: 'Month', days: 30 },
+  { value: '90d', label: '3 Months', days: 90 },
+  { value: '180d', label: '6 Months', days: 180 },
+  { value: '365d', label: '12 Months', days: 365 },
+];
+
 export default function Dashboard() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<ActivitySummary[]>([]);
   const [weekly, setWeekly] = useState<WeeklyMetric[]>([]);
+  const [todayEnergy, setTodayEnergy] = useState<{ baseCalories: number | null; activityCalories: number; totalCalories: number; message?: string } | null>(null);
+  const [period, setPeriod] = useState<DashboardPeriod>('30d');
   const [loading, setLoading] = useState(true);
 
+  const selectedPeriod = PERIOD_OPTIONS.find((option) => option.value === period) ?? PERIOD_OPTIONS[2];
+
   useEffect(() => {
-    Promise.all([getSummary('30d'), getWeeklyMetrics(8)])
-      .then(([s, w]) => { setSummary(s); setWeekly(w); })
+    const weeks = Math.max(1, Math.ceil(selectedPeriod.days / 7));
+
+    Promise.all([getSummary(period), getWeeklyMetrics(weeks), getTodayEnergy()])
+      .then(([s, w, energy]) => { setSummary(s); setWeekly(w); setTodayEnergy(energy); })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [period, selectedPeriod.days]);
 
   const totals = summary.reduce(
     (acc, s) => ({
@@ -50,19 +67,42 @@ export default function Dashboard() {
         <h1 className="text-2xl font-bold text-slate-100">
           Welcome back{user?.name ? `, ${user.name.split(' ')[0]}` : ''}! 👋
         </h1>
-        <p className="text-slate-400 mt-1">Last 30 days overview</p>
+        <p className="text-slate-400 mt-1">Activity overview for the selected period</p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-slate-400">Period</span>
+        <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-1">
+          {PERIOD_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setPeriod(option.value)}
+              className={`rounded-md px-3 py-1.5 text-sm transition ${period === option.value ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard label="Activities" value={totals.count} icon={<ActivityIcon size={16} />} color="orange" />
         <StatCard label="Distance" value={formatDistance(totals.distance)} icon={<TrendingUp size={16} />} color="blue" />
         <StatCard label="Time" value={formatDuration(totals.duration)} icon={<Clock size={16} />} color="green" />
-        <StatCard label="Calories" value={totals.calories > 0 ? `${totals.calories.toLocaleString()}` : '–'} unit={totals.calories > 0 ? 'kcal' : ''} icon={<Flame size={16} />} color="purple" />
+        <StatCard
+          label="Calories Today"
+          value={todayEnergy ? todayEnergy.totalCalories.toLocaleString() : '–'}
+          unit="kcal"
+          subtitle={todayEnergy ? `Base ${todayEnergy.baseCalories?.toLocaleString() ?? '–'} + activity ${todayEnergy.activityCalories.toLocaleString()}` : undefined}
+          icon={<Flame size={16} />}
+          color="purple"
+        />
       </div>
 
       {weeklyChart.length > 0 && (
         <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
-          <h2 className="text-slate-300 font-medium mb-4">Weekly Distance (km)</h2>
+          <h2 className="text-slate-300 font-medium mb-4">Weekly Distance ({selectedPeriod.label})</h2>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={weeklyChart.map(w => ({ ...w, distance: +(w.distance / 1000).toFixed(2) }))}>
               <defs>

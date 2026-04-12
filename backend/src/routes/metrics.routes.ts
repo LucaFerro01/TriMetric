@@ -4,7 +4,7 @@ import { metrics, activities, users } from '../db/schema';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import { estimateVO2MaxRun, estimateFTP, calculateTDEE, calculateCaloriesMET } from '../services/metrics.service';
+import { estimateVO2MaxRun, estimateVO2MaxBike, estimateFTP, calculateTDEE, estimateCaloriesBurned } from '../services/metrics.service';
 
 const router = Router();
 
@@ -35,17 +35,25 @@ router.get('/', async (req: Request, res: Response) => {
   return res.json(rows);
 });
 
-// GET /metrics/vo2max - estimated VO2max from recent runs
+// GET /metrics/vo2max - estimated VO2max from recent runs and rides
 router.get('/vo2max', async (req: Request, res: Response) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const weightKg = user?.weight ?? 70;
 
   const runs = await db.select().from(activities)
     .where(and(eq(activities.userId, userId), eq(activities.activityType, 'run')))
     .orderBy(desc(activities.startTime))
     .limit(20);
 
-  const estimates = runs
+  const rides = await db.select().from(activities)
+    .where(and(eq(activities.userId, userId), eq(activities.activityType, 'ride')))
+    .orderBy(desc(activities.startTime))
+    .limit(20);
+
+  const runEstimates = runs
     .filter((r) => r.distance && r.duration && r.distance > 1000)
     .map((r) => ({
       date: r.startTime,
@@ -53,7 +61,59 @@ router.get('/vo2max', async (req: Request, res: Response) => {
       activityId: r.id,
     }));
 
-  return res.json(estimates);
+  const bikeEstimates = rides
+    .filter((r) => r.avgPower && r.avgPower > 0)
+    .map((r) => ({
+      date: r.startTime,
+      vo2max: estimateVO2MaxBike(r.avgPower!, weightKg),
+      activityId: r.id,
+    }));
+
+  return res.json({ run: runEstimates, bike: bikeEstimates });
+});
+
+// GET /metrics/today-energy - base energy plus today's activity calories
+router.get('/today-energy', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId));
+  const now = new Date();
+  const startOfDay = new Date(now);
+  startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(now);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const dayActivities = await db.select().from(activities)
+    .where(and(
+      eq(activities.userId, userId),
+      gte(activities.startTime, startOfDay.toISOString()),
+      sql`${activities.startTime} <= ${endOfDay.toISOString()}`,
+    ))
+    .orderBy(desc(activities.startTime));
+
+  const activityCalories = dayActivities.reduce((sum, activity) => {
+    const calories = activity.calories ?? estimateCaloriesBurned(activity.activityType, activity.duration || 0, user?.weight);
+    return sum + calories;
+  }, 0);
+
+  const hasProfile = Boolean(user?.weight && user?.height && user?.birthDate);
+  const ageYears = hasProfile
+    ? Math.floor((Date.now() - new Date(user!.birthDate!).getTime()) / (1000 * 60 * 60 * 24 * 365))
+    : null;
+  const baseCalories = hasProfile
+    ? calculateTDEE(user!.weight!, user!.height!, ageYears!, true)
+    : null;
+
+  return res.json({
+    date: now.toISOString().split('T')[0],
+    baseCalories,
+    activityCalories,
+    totalCalories: (baseCalories ?? 0) + activityCalories,
+    activitiesCount: dayActivities.length,
+    weight: user?.weight,
+    message: hasProfile ? undefined : 'Profile incomplete (need weight, height, birth date)',
+  });
 });
 
 // GET /metrics/ftp - estimated FTP from cycling activities
