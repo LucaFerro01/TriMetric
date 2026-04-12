@@ -10,6 +10,7 @@ import path from 'path';
 import fs from 'fs';
 import { parseFitFile, parseGpxFile } from '../services/fitgpx.service';
 import { aggregateDailyMetrics } from '../services/metrics.service';
+import { syncStravaActivities } from '../services/strava.service';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -103,6 +104,20 @@ router.delete('/:id', async (req: Request, res: Response) => {
     .where(and(eq(activities.id, req.params.id), eq(activities.userId, userId)));
 
   return res.json({ success: true });
+});
+
+// POST /activities/strava/sync - Import all historical Strava activities
+router.post('/strava/sync', async (req: Request, res: Response) => {
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const count = await syncStravaActivities(userId);
+    return res.json({ synced: count });
+  } catch (err) {
+    console.error('[StravaSync] Failed:', err);
+    return res.status(500).json({ error: 'Sync failed', details: String(err) });
+  }
 });
 
 // POST /activities/upload - FIT or GPX file upload
