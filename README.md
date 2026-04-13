@@ -31,6 +31,23 @@ A unified sport data aggregation and analytics platform that integrates Strava, 
 
 ## Quick Start
 
+### Production (Docker Compose)
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/LucaFerro01/TriMetric
+cd TriMetric
+cp .env.example .env
+# Edit .env with your secrets (Strava credentials, JWT secrets, etc.)
+
+# 2. Build and start all services
+docker compose up --build -d
+```
+
+The frontend is available at http://localhost (port 80).
+
+### Local Development
+
 ```bash
 # 1. Clone and install dependencies
 git clone https://github.com/LucaFerro01/TriMetric
@@ -41,8 +58,8 @@ pnpm install
 cp .env.example backend/.env
 # Edit backend/.env with your Strava credentials
 
-# 3. Start infrastructure
-docker compose up -d
+# 3. Start infrastructure (DB + Redis only)
+docker compose up -d postgres redis
 
 # 4. Generate and run database migrations
 pnpm --filter backend migrate:generate
@@ -84,13 +101,46 @@ Uses the community-documented Mifit API (unofficial, may change):
 
 ## Architecture
 
-```
-Strava Webhook → Express → BullMQ (Redis) → Worker → PostgreSQL/TimescaleDB
-                                                          ↑
-Manual FIT/GPX upload ────────────────────────────────────┘
-Zepp API (scheduled) ─────────────────────────────────────┘
+The application runs as a set of microservices orchestrated by Docker Compose:
 
-React PWA (Vite) → REST API → PostgreSQL
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Docker Compose                       │
+│                                                         │
+│  ┌──────────┐    ┌──────────┐    ┌────────────────────┐ │
+│  │ frontend │    │   api    │    │       worker       │ │
+│  │  nginx   │───▶│ Express  │    │  BullMQ (Strava)   │ │
+│  │ port 80  │    │ port 3001│    │                    │ │
+│  └──────────┘    └────┬─────┘    └────────┬───────────┘ │
+│                       │                   │             │
+│               ┌───────┴───────────────────┘             │
+│               ▼                   ▼                     │
+│  ┌────────────────────┐  ┌────────────────────┐         │
+│  │      postgres      │  │       redis        │         │
+│  │ TimescaleDB pg15   │  │    7-alpine        │         │
+│  └────────────────────┘  └────────────────────┘         │
+└─────────────────────────────────────────────────────────┘
+```
+
+| Service | Role |
+|---------|------|
+| `frontend` | nginx serving the React PWA; proxies `/api/*` → `api:3001` |
+| `api` | Express HTTP server; runs DB migrations on startup |
+| `worker` | BullMQ worker that processes async Strava jobs from Redis |
+| `postgres` | TimescaleDB (PostgreSQL 15) for activities and metrics |
+| `redis` | Redis 7 job queue for async activity ingestion |
+
+All services have **health checks** and `restart: unless-stopped`. Startup order is enforced with `depends_on: condition: service_healthy`.
+
+**Data flow:**
+
+```
+Strava Webhook → api → Redis (BullMQ) → worker → PostgreSQL/TimescaleDB
+                                                       ↑
+Manual FIT/GPX upload ─────────────────────────────────┘
+Zepp API (scheduled) ──────────────────────────────────┘
+
+React PWA (nginx) → /api/* proxy → api → PostgreSQL
 ```
 
 ## Project Structure
@@ -103,7 +153,9 @@ TriMetric/
 │   │   ├── routes/   # Express route handlers
 │   │   ├── services/ # Business logic (Strava, Zepp, metrics)
 │   │   ├── workers/  # BullMQ job workers
-│   │   └── index.ts  # App entry point
+│   │   ├── index.ts  # HTTP server entry point
+│   │   └── worker.ts # BullMQ worker entry point (separate container)
+│   ├── Dockerfile
 │   └── package.json
 ├── frontend/         # React PWA
 │   ├── src/
@@ -111,6 +163,8 @@ TriMetric/
 │   │   ├── pages/
 │   │   ├── hooks/
 │   │   └── main.tsx
+│   ├── nginx.conf    # SPA routing + /api proxy config
+│   ├── Dockerfile
 │   └── package.json
 ├── docker-compose.yml
 └── .env.example

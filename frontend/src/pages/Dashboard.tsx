@@ -41,10 +41,10 @@ export default function Dashboard() {
 
   const totals = summary.reduce(
     (acc, s) => ({
-      distance: acc.distance + (s.totalDistance || 0),
-      duration: acc.duration + (s.totalDuration || 0),
-      calories: acc.calories + (s.totalCalories || 0),
-      count: acc.count + (s.count || 0),
+      distance: acc.distance + (Number(s.totalDistance) || 0),
+      duration: acc.duration + (Number(s.totalDuration) || 0),
+      calories: acc.calories + (Number(s.totalCalories) || 0),
+      count: acc.count + (Number(s.count) || 0),
     }),
     { distance: 0, duration: 0, calories: 0, count: 0 }
   );
@@ -53,8 +53,8 @@ export default function Dashboard() {
   const weeklyChart = Object.values(
     weekly.reduce<Record<string, { week: string; distance: number; duration: number }>>((acc, w) => {
       if (!acc[w.week]) acc[w.week] = { week: w.week, distance: 0, duration: 0 };
-      acc[w.week].distance += w.totalDistance || 0;
-      acc[w.week].duration += w.totalDuration || 0;
+      acc[w.week].distance += Number(w.totalDistance) || 0;
+      acc[w.week].duration += Number(w.totalDuration) || 0;
       return acc;
     }, {})
   ).sort((a, b) => a.week.localeCompare(b.week));
