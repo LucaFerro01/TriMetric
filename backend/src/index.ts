@@ -9,7 +9,6 @@ import authRoutes from './routes/auth.routes';
 import webhookRoutes from './routes/webhook.routes';
 import activitiesRoutes from './routes/activities.routes';
 import metricsRoutes from './routes/metrics.routes';
-import { createStravaWorker } from './workers/strava.worker';
 
 const app = express();
 
@@ -50,9 +49,5 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 const server = app.listen(config.port, () => {
   console.log(`[Server] Listening on http://localhost:${config.port}`);
 });
-
-// Start BullMQ workers
-createStravaWorker();
-console.log('[Workers] Strava worker started');
 
 export default server;
