@@ -20,20 +20,26 @@ const router = Router();
 
 // GET /auth/strava - redirect to Strava
 router.get('/strava', (_req: Request, res: Response) => {
-  res.redirect(getAuthUrl());
+  const url = getAuthUrl();
+  console.log('[Auth] Redirecting to Strava OAuth:', url);
+  res.redirect(url);
 });
 
 // GET /auth/strava/callback
 router.get('/strava/callback', authLimiter, async (req: Request, res: Response) => {
-  const { code, error } = req.query as { code?: string; error?: string };
+  const { code, error, scope } = req.query as { code?: string; error?: string; scope?: string };
+
+  console.log('[Auth] Strava callback received', { hasCode: !!code, error, scope });
 
   if (error || !code) {
+    console.warn('[Auth] Strava OAuth error or missing code:', error ?? 'no_code');
     return res.redirect(`${config.frontendUrl}/auth/error?message=${error || 'no_code'}`);
   }
 
   try {
     const tokens = await exchangeCode(code);
     const athlete = tokens.athlete;
+    console.log('[Auth] Token exchange successful for athlete', athlete.id);
 
     // Upsert user
     const existing = await db.select().from(users).where(eq(users.stravaId, String(athlete.id)));
@@ -75,7 +81,8 @@ router.get('/strava/callback', authLimiter, async (req: Request, res: Response) 
     return res.redirect(`${config.frontendUrl}/auth/callback?token=${jwtToken}`);
   } catch (err) {
     console.error('[Auth] Strava callback error:', err);
-    return res.redirect(`${config.frontendUrl}/auth/error?message=auth_failed`);
+    const message = err instanceof Error ? err.message : 'auth_failed';
+    return res.redirect(`${config.frontendUrl}/auth/error?message=auth_failed&detail=${encodeURIComponent(message)}`);
   }
 });
 

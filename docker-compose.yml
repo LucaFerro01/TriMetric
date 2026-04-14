@@ -44,17 +44,12 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      # Override DB/Redis URLs to use Docker service hostnames instead of localhost
       DATABASE_URL: ${DATABASE_URL:-postgresql://trimetric:trimetric@postgres:5432/trimetric}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # Override FRONTEND_URL default (dev uses :5173; production Docker uses port 80)
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
-      BACKEND_URL: ${BACKEND_URL}
-      SESSION_SECRET: ${SESSION_SECRET}
-      JWT_SECRET: ${JWT_SECRET}
-      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
-      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
-      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-}
-      STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN}
-      ZEPP_APP_TOKEN: ${ZEPP_APP_TOKEN}
+      # Remaining secrets/credentials are loaded from env_file (backend/.env)
     depends_on:
       postgres:
         condition: service_healthy
