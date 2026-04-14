@@ -43,15 +43,21 @@ router.post('/strava', async (req: Request, res: Response) => {
 router.post('/strava/subscribe', async (_req: Request, res: Response) => {
   const axios = await import('axios');
   try {
-    const response = await axios.default.post('https://www.strava.com/api/v3/push_subscriptions', {
+    const body = new URLSearchParams({
       client_id: config.strava.clientId,
       client_secret: config.strava.clientSecret,
       callback_url: `${config.backendUrl}/webhook/strava`,
       verify_token: config.strava.webhookVerifyToken,
     });
+
+    const response = await axios.default.post('https://www.strava.com/api/v3/push_subscriptions', body, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
     res.json(response.data);
   } catch (err) {
-    const error = err as { response?: { data: unknown } };
+    const error = err as { response?: { data: unknown }; message?: string };
     res.status(400).json({ error: 'Failed to subscribe', details: error.response?.data });
   }
 });

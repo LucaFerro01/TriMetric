@@ -44,7 +44,8 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-The frontend is available at http://localhost (port 80).
+The frontend is available at http://localhost:8080 by default.
+If you want to use port 80, set `FRONTEND_PORT=80` and make sure nothing else is already bound there.
 
 ### Local Development
 
@@ -73,6 +74,7 @@ pnpm dev
 ```
 
 The backend runs on http://localhost:3001 and the frontend on http://localhost:5173.
+If you are using Docker Compose, the API port is published on the host so you can also run `ngrok http 3001` against the local backend.
 
 ## Strava Setup
 
@@ -83,6 +85,8 @@ The backend runs on http://localhost:3001 and the frontend on http://localhost:5
    ```bash
    curl -X POST http://localhost:3001/webhook/strava/subscribe
    ```
+   If you are running the backend in Docker, make sure the API container is up and port 3001 is published on the host.
+5. If you expose the backend with ngrok, set `BACKEND_URL` to the public ngrok HTTPS URL for the webhook callback and, if needed, set `STRAVA_REDIRECT_URI` to the ngrok URL for OAuth login callback.
 
 ## Bryton Integration
 
@@ -110,7 +114,7 @@ The application runs as a set of microservices orchestrated by Docker Compose:
 │  ┌──────────┐    ┌──────────┐    ┌────────────────────┐ │
 │  │ frontend │    │   api    │    │       worker       │ │
 │  │  nginx   │───▶│ Express  │    │  BullMQ (Strava)   │ │
-│  │ port 80  │    │ port 3001│    │                    │ │
+│  │ 8080     │    │ port 3001│    │                    │ │
 │  └──────────┘    └────┬─────┘    └────────┬───────────┘ │
 │                       │                   │             │
 │               ┌───────┴───────────────────┘             │
