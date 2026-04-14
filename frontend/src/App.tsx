@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { getToken } from './api/auth';
 import Layout from './components/Layout';
 import Login from './pages/Login';
+import AuthError from './pages/AuthError';
 import Dashboard from './pages/Dashboard';
 import Activities from './pages/Activities';
 import ActivityDetail from './pages/ActivityDetail';
@@ -22,6 +23,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<Login />} />
+        <Route path="/auth/error" element={<AuthError />} />
         <Route
           path="/"
           element={
