@@ -20,7 +20,8 @@ export const config = {
     clientId: process.env.STRAVA_CLIENT_ID || '',
     clientSecret: process.env.STRAVA_CLIENT_SECRET || '',
     webhookVerifyToken: process.env.STRAVA_WEBHOOK_VERIFY_TOKEN || 'trimetric-verify',
-    redirectUri: process.env.STRAVA_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:5173'}/api/auth/strava/callback`,
+    // Use backend callback by default so OAuth works behind Docker/tunnels (ngrok/public domain).
+    redirectUri: process.env.STRAVA_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://localhost:3001'}/auth/strava/callback`,
   },
   zepp: {
     appToken: process.env.ZEPP_APP_TOKEN || '',

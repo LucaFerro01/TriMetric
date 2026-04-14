@@ -25,9 +25,11 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
-            urlPattern: /^http:\/\/localhost:3001\/api\/.*/i,
+            // Cache API responses - matches /api/* requests made through frontend's API client
+            urlPattern: /^\/api\/.*$/i,
             handler: 'NetworkFirst',
             options: { cacheName: 'api-cache', expiration: { maxEntries: 100, maxAgeSeconds: 86400 } },
           },

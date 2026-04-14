@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getToken, saveToken } from '../api/auth';
+import { getStravaAuthUrl, getToken, saveToken } from '../api/auth';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ export default function Login() {
 
         <div className="space-y-3">
           <a
-            href="/api/auth/strava"
+            href={getStravaAuthUrl()}
             className="flex items-center justify-center gap-3 w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066l-2.084 4.116z"/><path d="M8.842 11.828l2.089-4.116 2.089 4.116H8.842z" opacity=".5"/></svg>
