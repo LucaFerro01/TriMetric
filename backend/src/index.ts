@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes';
 import webhookRoutes from './routes/webhook.routes';
 import activitiesRoutes from './routes/activities.routes';
 import metricsRoutes from './routes/metrics.routes';
+import schedulingRoutes from './routes/scheduling.routes';
 
 const app = express();
 
@@ -33,6 +34,7 @@ app.use('/auth', authRoutes);
 app.use('/webhook', webhookRoutes);
 app.use('/activities', activitiesRoutes);
 app.use('/metrics', metricsRoutes);
+app.use('/scheduling', schedulingRoutes);
 
 // 404
 app.use((_req, res) => {

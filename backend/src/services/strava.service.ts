@@ -168,7 +168,7 @@ export async function saveStravaActivity(userId: string, stravaActivity: Record<
   return created;
 }
 
-export function getAuthUrl(): string {
+export function getAuthUrl(state?: string): string {
   const params = new URLSearchParams({
     client_id: config.strava.clientId,
     redirect_uri: config.strava.redirectUri,
@@ -176,5 +176,6 @@ export function getAuthUrl(): string {
     approval_prompt: 'auto',
     scope: 'read,activity:read_all',
   });
+  if (state) params.set('state', state);
   return `${STRAVA_AUTH}/authorize?${params}`;
 }

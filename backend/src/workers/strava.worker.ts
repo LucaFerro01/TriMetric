@@ -7,9 +7,32 @@ import { db } from '../db';
 import { users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
-export const stravaQueue = new Queue('strava', {
-  connection: new IORedis(config.redisUrl, { maxRetriesPerRequest: null }),
-});
+let stravaQueue: Queue | null = null;
+
+function getStravaQueue(): Queue {
+  if (!stravaQueue) {
+    stravaQueue = new Queue('strava', {
+      connection: new IORedis(config.redisUrl, { maxRetriesPerRequest: null }),
+    });
+  }
+  return stravaQueue;
+}
+
+export async function enqueueStravaActivity(activityId: number, stravaUserId: number): Promise<boolean> {
+  try {
+    await getStravaQueue().add('fetch-strava-activity', {
+      activityId,
+      stravaUserId,
+    }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    });
+    return true;
+  } catch (err) {
+    console.warn('[StravaQueue] Failed to enqueue activity:', err);
+    return false;
+  }
+}
 
 export function createStravaWorker() {
   const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });

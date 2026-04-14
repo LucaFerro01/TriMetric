@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { updateProfile, logout } from '../api/auth';
+import { updateProfile, logout, getStravaAuthUrl } from '../api/auth';
 import { CheckCircle } from 'lucide-react';
 
 export default function Profile() {
@@ -83,7 +83,7 @@ export default function Profile() {
             </div>
           </div>
           {!user.stravaId && (
-            <a href="/api/auth/strava" className="text-orange-400 text-sm hover:text-orange-300">Connect</a>
+            <a href={getStravaAuthUrl()} className="text-orange-400 text-sm hover:text-orange-300">Connect</a>
           )}
         </div>
       </div>

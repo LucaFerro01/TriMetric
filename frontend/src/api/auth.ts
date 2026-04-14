@@ -22,12 +22,13 @@ export async function updateProfile(data: Partial<Pick<User, 'name' | 'weight' |
 
 export function getStravaAuthUrl(): string {
   const configuredApiUrl = import.meta.env.VITE_API_URL;
-  if (configuredApiUrl) return `${configuredApiUrl}/auth/strava`;
+  const frontend = encodeURIComponent(window.location.origin);
+  if (configuredApiUrl) return `${configuredApiUrl}/auth/strava?frontend=${frontend}`;
 
   // Default to backend port in local Docker setups to avoid SPA service-worker interception on /api routes.
   const host = window.location.hostname;
   const protocol = window.location.protocol;
-  return `${protocol}//${host}:3001/auth/strava`;
+  return `${protocol}//${host}:3001/auth/strava?frontend=${frontend}`;
 }
 
 export function saveToken(token: string): void {

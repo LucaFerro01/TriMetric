@@ -1,10 +1,11 @@
 import { Link, useLocation, Outlet } from 'react-router-dom';
-import { Activity, BarChart2, User, Upload, Home } from 'lucide-react';
+import { Activity, BarChart2, User, Upload, Home, CalendarDays } from 'lucide-react';
 
 const nav = [
   { to: '/', label: 'Dashboard', icon: Home },
   { to: '/activities', label: 'Activities', icon: Activity },
   { to: '/analytics', label: 'Analytics', icon: BarChart2 },
+  { to: '/scheduling', label: 'Scheduling', icon: CalendarDays },
   { to: '/upload', label: 'Upload', icon: Upload },
   { to: '/profile', label: 'Profile', icon: User },
 ];

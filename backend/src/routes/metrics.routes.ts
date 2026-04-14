@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { estimateVO2MaxRun, estimateVO2MaxBike, estimateFTP, calculateTDEE, estimateCaloriesBurned } from '../services/metrics.service';
 
-const router = Router();
+const router: Router = Router();
 
 function getUserId(req: Request): string | null {
   const token = req.headers.authorization?.replace('Bearer ', '');

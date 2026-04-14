@@ -75,10 +75,31 @@ export const streamData = pgTable('stream_data', {
   latlng: jsonb('latlng'),
 });
 
+export const scheduledWorkouts = pgTable('scheduled_workouts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  discipline: varchar('discipline', { length: 50 }).notNull(), // 'run', 'bike', 'swim'
+  workoutType: varchar('workout_type', { length: 100 }).notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  description: text('description'),
+  scheduledDate: date('scheduled_date').notNull(),
+  scheduledTime: varchar('scheduled_time', { length: 5 }), // HH:mm
+  duration: integer('duration'), // minutes
+  distance: real('distance'), // km
+  intensity: varchar('intensity', { length: 50 }),
+  status: varchar('status', { length: 30 }).default('planned').notNull(), // planned | completed | skipped
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  userDateIdx: index('scheduled_workouts_user_date_idx').on(table.userId, table.scheduledDate),
+  disciplineIdx: index('scheduled_workouts_discipline_idx').on(table.discipline),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   activities: many(activities),
   metrics: many(metrics),
+  scheduledWorkouts: many(scheduledWorkouts),
 }));
 
 export const activitiesRelations = relations(activities, ({ one }) => ({
@@ -88,4 +109,8 @@ export const activitiesRelations = relations(activities, ({ one }) => ({
 
 export const metricsRelations = relations(metrics, ({ one }) => ({
   user: one(users, { fields: [metrics.userId], references: [users.id] }),
+}));
+
+export const scheduledWorkoutsRelations = relations(scheduledWorkouts, ({ one }) => ({
+  user: one(users, { fields: [scheduledWorkouts.userId], references: [users.id] }),
 }));

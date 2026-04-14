@@ -8,6 +8,34 @@
       "when": 1775979508153,
       "tag": "0000_needy_mordo",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1776170000000,
+      "tag": "0001_scheduled_workouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1776172580225,
+      "tag": "0004_bumpy_thor_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1776174200000,
+      "tag": "0005_scheduling_legacy_columns_fix",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1776174300000,
+      "tag": "0006_scheduling_drop_legacy_columns",
+      "breakpoints": true
     }
   ]
 }

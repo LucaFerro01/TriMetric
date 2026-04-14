@@ -16,9 +16,8 @@ export function estimateVO2MaxCooper(distanceMeters: number): number {
  * @param timeSeconds Total time in seconds
  */
 export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): number {
-  const distanceKm = distanceMeters / 1000;
   const timeMinutes = timeSeconds / 60;
-  const velocity = distanceKm / timeMinutes; // km/min
+  const velocity = distanceMeters / timeMinutes; // m/min
   const percentMax = 0.8 + 0.1894393 * Math.exp(-0.012778 * timeMinutes) + 0.2989558 * Math.exp(-0.1932605 * timeMinutes);
   const vo2 = -4.60 + 0.182258 * velocity + 0.000104 * velocity * velocity;
   return vo2 / percentMax;

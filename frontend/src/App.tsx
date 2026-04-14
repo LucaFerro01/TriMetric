@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard';
 import Activities from './pages/Activities';
 import ActivityDetail from './pages/ActivityDetail';
 import Analytics from './pages/Analytics';
+import Scheduling from './pages/Scheduling';
 import Upload from './pages/Upload';
 import Profile from './pages/Profile';
 
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="activities" element={<Activities />} />
           <Route path="activities/:id" element={<ActivityDetail />} />
           <Route path="analytics" element={<Analytics />} />
+          <Route path="scheduling" element={<Scheduling />} />
           <Route path="upload" element={<Upload />} />
           <Route path="profile" element={<Profile />} />
         </Route>

@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { config } from '../config';
-import { stravaQueue } from '../workers/strava.worker';
+import { enqueueStravaActivity } from '../workers/strava.worker';
 
-const router = Router();
+const router: Router = Router();
 
 // GET /webhook/strava - Strava webhook verification
 router.get('/strava', (req: Request, res: Response) => {
@@ -28,14 +28,12 @@ router.post('/strava', async (req: Request, res: Response) => {
   res.sendStatus(200);
 
   if (object_type === 'activity' && (aspect_type === 'create' || aspect_type === 'update')) {
-    await stravaQueue.add('fetch-strava-activity', {
-      activityId: object_id,
-      stravaUserId: owner_id,
-    }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
-    console.log(`[Webhook] Queued activity ${object_id} for user ${owner_id}`);
+    const queued = await enqueueStravaActivity(object_id, owner_id);
+    if (queued) {
+      console.log(`[Webhook] Queued activity ${object_id} for user ${owner_id}`);
+    } else {
+      console.warn(`[Webhook] Could not queue activity ${object_id} (Redis unavailable)`);
+    }
   }
 });
 

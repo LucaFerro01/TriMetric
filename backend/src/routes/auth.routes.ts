@@ -16,24 +16,62 @@ const authLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
 });
 
-const router = Router();
+const router: Router = Router();
+
+function sanitizeFrontendUrl(value?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+
+    const configuredHost = new URL(config.frontendUrl).host;
+    const isConfiguredHost = url.host === configuredHost;
+    const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+    if (isConfiguredHost || isLocalhost) {
+      return url.origin;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function encodeState(frontendUrl: string): string {
+  return Buffer.from(JSON.stringify({ frontendUrl }), 'utf8').toString('base64url');
+}
+
+function decodeState(state?: string): string | null {
+  if (!state) return null;
+  try {
+    const json = Buffer.from(state, 'base64url').toString('utf8');
+    const parsed = JSON.parse(json) as { frontendUrl?: string };
+    return sanitizeFrontendUrl(parsed.frontendUrl);
+  } catch {
+    return null;
+  }
+}
 
 // GET /auth/strava - redirect to Strava
-router.get('/strava', (_req: Request, res: Response) => {
-  const url = getAuthUrl();
+router.get('/strava', (req: Request, res: Response) => {
+  const frontendFromQuery = sanitizeFrontendUrl((req.query.frontend as string) || undefined);
+  const frontendForCallback = frontendFromQuery || config.frontendUrl;
+  const url = getAuthUrl(encodeState(frontendForCallback));
   console.log('[Auth] Redirecting to Strava OAuth:', url);
   res.redirect(url);
 });
 
 // GET /auth/strava/callback
 router.get('/strava/callback', authLimiter, async (req: Request, res: Response) => {
-  const { code, error, scope } = req.query as { code?: string; error?: string; scope?: string };
+  const { code, error, scope, state } = req.query as { code?: string; error?: string; scope?: string; state?: string };
+  const frontendForRedirect = decodeState(state) || config.frontendUrl;
 
   console.log('[Auth] Strava callback received', { hasCode: !!code, error, scope });
 
   if (error || !code) {
     console.warn('[Auth] Strava OAuth error or missing code:', error ?? 'no_code');
-    return res.redirect(`${config.frontendUrl}/auth/error?message=${error || 'no_code'}`);
+    return res.redirect(`${frontendForRedirect}/auth/error?message=${error || 'no_code'}`);
   }
 
   try {
@@ -78,11 +116,11 @@ router.get('/strava/callback', authLimiter, async (req: Request, res: Response) 
       });
     }
 
-    return res.redirect(`${config.frontendUrl}/auth/callback?token=${jwtToken}`);
+    return res.redirect(`${frontendForRedirect}/auth/callback?token=${jwtToken}`);
   } catch (err) {
     console.error('[Auth] Strava callback error:', err);
     const message = err instanceof Error ? err.message : 'auth_failed';
-    return res.redirect(`${config.frontendUrl}/auth/error?message=auth_failed&detail=${encodeURIComponent(message)}`);
+    return res.redirect(`${frontendForRedirect}/auth/error?message=auth_failed&detail=${encodeURIComponent(message)}`);
   }
 });
 
