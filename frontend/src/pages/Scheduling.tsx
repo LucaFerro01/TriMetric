@@ -13,84 +13,65 @@ import {
   subMonths,
 } from 'date-fns';
 import {
+  createWorkoutTemplate,
   createScheduledWorkout,
+  deleteWorkoutTemplate,
   deleteScheduledWorkout,
   getScheduledWorkouts,
+  getWorkoutTemplates,
   type CreateScheduledWorkout,
   type Discipline,
   type ScheduledWorkout,
+  type WorkoutStep,
+  type WorkoutTemplate,
   type WorkoutStatus,
   updateScheduledWorkout,
 } from '../api/scheduling';
 
-type WorkoutTemplate = {
+type WorkoutTargetOption = {
   value: string;
   label: string;
-  description: string;
-  intensity: string;
+  placeholder: string;
 };
 
-const templatesByDiscipline: Record<Discipline, WorkoutTemplate[]> = {
+const targetOptionsByDiscipline: Record<Discipline, WorkoutTargetOption[]> = {
   run: [
-    {
-      value: 'easy-run-z2',
-      label: 'Easy Run (Z1-Z2)',
-      description: '45-60 min corsa facile per aumentare volume aerobico e favorire recupero.',
-      intensity: 'Bassa',
-    },
-    {
-      value: 'long-run',
-      label: 'Long Run',
-      description: '80-120 min a ritmo conversazionale per resistenza specifica.',
-      intensity: 'Media',
-    },
-    {
-      value: 'vo2-intervals',
-      label: 'VO2 Intervals',
-      description: '5-6 x 3 min ad alta intensita con 2 min recupero jog.',
-      intensity: 'Alta',
-    },
+    { value: 'pace_min_km', label: 'Ritmo (min/km)', placeholder: 'es. 4:45 /km' },
+    { value: 'heart_rate_bpm', label: 'Frequenza cardiaca (bpm)', placeholder: 'es. 155 bpm' },
+    { value: 'rpe', label: 'RPE', placeholder: 'es. 7/10' },
   ],
   bike: [
-    {
-      value: 'endurance-z2',
-      label: 'Endurance Ride (Z2)',
-      description: '90-150 min in Z2 per base aerobica e tolleranza al volume.',
-      intensity: 'Bassa',
-    },
-    {
-      value: 'threshold-intervals',
-      label: 'Threshold Intervals',
-      description: '3 x 12 min a 95-100% FTP con 6 min recupero.',
-      intensity: 'Alta',
-    },
-    {
-      value: 'long-ride',
-      label: 'Long Ride',
-      description: '2.5-4 ore a ritmo endurance per stamina metabolica.',
-      intensity: 'Media',
-    },
+    { value: 'power_w', label: 'Potenza (W)', placeholder: 'es. 240 W' },
+    { value: 'heart_rate_bpm', label: 'Frequenza cardiaca (bpm)', placeholder: 'es. 150 bpm' },
+    { value: 'cadence_rpm', label: 'Cadenza (rpm)', placeholder: 'es. 90 rpm' },
+    { value: 'speed_kmh', label: 'Velocita (km/h)', placeholder: 'es. 34 km/h' },
+    { value: 'rpe', label: 'RPE', placeholder: 'es. 8/10' },
   ],
   swim: [
-    {
-      value: 'technique-drills',
-      label: 'Technique + Drills',
-      description: 'Sessione tecnica con focus su efficienza, assetto e trazione.',
-      intensity: 'Bassa',
-    },
-    {
-      value: 'css-intervals',
-      label: 'CSS Intervals',
-      description: '10 x 100m a passo soglia nuoto con recuperi brevi controllati.',
-      intensity: 'Alta',
-    },
-    {
-      value: 'aerobic-endurance',
-      label: 'Aerobic Endurance',
-      description: 'Serie lunghe continue per costruire capacita aerobica nel nuoto.',
-      intensity: 'Media',
-    },
+    { value: 'pace_100m', label: 'Passo /100m', placeholder: 'es. 1:42 /100m' },
+    { value: 'heart_rate_bpm', label: 'Frequenza cardiaca (bpm)', placeholder: 'es. 145 bpm' },
+    { value: 'swolf', label: 'SWOLF', placeholder: 'es. 38' },
+    { value: 'stroke_rate_spm', label: 'Stroke rate (spm)', placeholder: 'es. 34 spm' },
+    { value: 'rpe', label: 'RPE', placeholder: 'es. 6/10' },
   ],
+};
+
+const disciplineDefaults: Record<Discipline, { workoutType: string; duration: number; distance: number; intensity: string }> = {
+  run: { workoutType: 'Corsa personalizzata', duration: 60, distance: 10, intensity: 'Media' },
+  bike: { workoutType: 'Bici personalizzata', duration: 90, distance: 45, intensity: 'Media' },
+  swim: { workoutType: 'Nuoto personalizzato', duration: 50, distance: 2.2, intensity: 'Media' },
+};
+
+const targetLabelByValue: Record<string, string> = {
+  pace_min_km: 'Ritmo (min/km)',
+  heart_rate_bpm: 'FC (bpm)',
+  rpe: 'RPE',
+  power_w: 'Potenza (W)',
+  cadence_rpm: 'Cadenza (rpm)',
+  speed_kmh: 'Velocita (km/h)',
+  pace_100m: 'Passo /100m',
+  swolf: 'SWOLF',
+  stroke_rate_spm: 'Stroke rate (spm)',
 };
 
 const statusClass: Record<WorkoutStatus, string> = {
@@ -103,18 +84,50 @@ function toDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+function buildDefaultStep(discipline: Discipline): WorkoutStep {
+  const targetOption = targetOptionsByDiscipline[discipline][0];
+  return {
+    name: 'Step 1',
+    durationMinutes: 10,
+    distance: null,
+    distanceUnit: discipline === 'swim' ? 'm' : 'km',
+    targetType: targetOption.value,
+    targetValue: '',
+    notes: null,
+  };
+}
+
+function formatStepSummary(step: WorkoutStep): string {
+  const parts: string[] = [step.name];
+  if (step.durationMinutes != null && step.durationMinutes > 0) {
+    parts.push(`${step.durationMinutes} min`);
+  }
+  if (step.distance != null && step.distance > 0) {
+    parts.push(`${step.distance} ${step.distanceUnit ?? 'km'}`);
+  }
+  parts.push(`${targetLabelByValue[step.targetType] ?? step.targetType}: ${step.targetValue}`);
+  return parts.join(' · ');
+}
+
 export default function Scheduling() {
   const [calendarMonth, setCalendarMonth] = useState(startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [workouts, setWorkouts] = useState<ScheduledWorkout[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   const [discipline, setDiscipline] = useState<Discipline>('run');
-  const [templateValue, setTemplateValue] = useState(templatesByDiscipline.run[0].value);
+  const [workoutType, setWorkoutType] = useState(disciplineDefaults.run.workoutType);
+  const [templateDescription, setTemplateDescription] = useState('');
+  const [intensity, setIntensity] = useState(disciplineDefaults.run.intensity);
   const [scheduledTime, setScheduledTime] = useState('07:00');
   const [duration, setDuration] = useState<number>(60);
   const [distance, setDistance] = useState<number>(0);
+  const [steps, setSteps] = useState<WorkoutStep[]>([buildDefaultStep('run')]);
 
   const visibleRange = useMemo(() => {
     const from = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
@@ -127,10 +140,7 @@ export default function Scheduling() {
     [visibleRange]
   );
 
-  const selectedTemplate = useMemo(
-    () => templatesByDiscipline[discipline].find((t) => t.value === templateValue) ?? templatesByDiscipline[discipline][0],
-    [discipline, templateValue]
-  );
+  const currentTargetOptions = useMemo(() => targetOptionsByDiscipline[discipline], [discipline]);
 
   const groupedByDate = useMemo(() => {
     return workouts.reduce<Record<string, ScheduledWorkout[]>>((acc, workout) => {
@@ -144,9 +154,21 @@ export default function Scheduling() {
   const selectedDayWorkouts = groupedByDate[selectedDateKey] ?? [];
 
   useEffect(() => {
-    setTemplateValue(templatesByDiscipline[discipline][0].value);
-    setDuration(discipline === 'bike' ? 90 : discipline === 'swim' ? 50 : 60);
-    setDistance(discipline === 'bike' ? 45 : discipline === 'swim' ? 2.2 : 10);
+    setWorkoutType(disciplineDefaults[discipline].workoutType);
+    setTemplateDescription('');
+    setIntensity(disciplineDefaults[discipline].intensity);
+    setDuration(disciplineDefaults[discipline].duration);
+    setDistance(disciplineDefaults[discipline].distance);
+    setSteps([buildDefaultStep(discipline)]);
+    setSelectedTemplateId('');
+  }, [discipline]);
+
+  useEffect(() => {
+    setTemplatesLoading(true);
+    getWorkoutTemplates(discipline)
+      .then(setTemplates)
+      .catch(console.error)
+      .finally(() => setTemplatesLoading(false));
   }, [discipline]);
 
   useEffect(() => {
@@ -160,19 +182,138 @@ export default function Scheduling() {
       .finally(() => setLoading(false));
   }, [visibleRange.from, visibleRange.to]);
 
+  function updateStep(index: number, patch: Partial<WorkoutStep>) {
+    setSteps((prev) => prev.map((step, i) => (i === index ? { ...step, ...patch } : step)));
+  }
+
+  function addStep() {
+    setSteps((prev) => {
+      const nextStep = buildDefaultStep(discipline);
+      nextStep.name = `Step ${prev.length + 1}`;
+      return [...prev, nextStep];
+    });
+  }
+
+  function removeStep(index: number) {
+    setSteps((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  }
+
+  function getTargetPlaceholder(targetType: string): string {
+    return currentTargetOptions.find((option) => option.value === targetType)?.placeholder ?? 'Valore target';
+  }
+
+  function normalizeSteps(): WorkoutStep[] | null {
+    const normalizedSteps = steps.map((step) => ({
+      ...step,
+      name: step.name.trim(),
+      targetValue: step.targetValue.trim(),
+      notes: step.notes?.trim() || null,
+      durationMinutes: step.durationMinutes && step.durationMinutes > 0 ? step.durationMinutes : null,
+      distance: step.distance && step.distance > 0 ? step.distance : null,
+    }));
+
+    const hasInvalidStep = normalizedSteps.some((step) => {
+      const hasVolume = (step.durationMinutes ?? 0) > 0 || (step.distance ?? 0) > 0;
+      return !step.name || !step.targetValue || !hasVolume;
+    });
+
+    if (hasInvalidStep) {
+      alert('Ogni step richiede nome, target e almeno durata o distanza.');
+      return null;
+    }
+
+    return normalizedSteps;
+  }
+
+  function handleApplyTemplate() {
+    if (!selectedTemplateId) return;
+    const template = templates.find((item) => item.id === selectedTemplateId);
+    if (!template) return;
+
+    setWorkoutType(template.name);
+    setTemplateDescription(template.description ?? '');
+    setIntensity(template.intensity ?? disciplineDefaults[discipline].intensity);
+    setDuration(template.duration ?? disciplineDefaults[discipline].duration);
+    setDistance(template.distance ?? disciplineDefaults[discipline].distance);
+    setSteps(template.workoutSteps && template.workoutSteps.length > 0 ? template.workoutSteps : [buildDefaultStep(discipline)]);
+  }
+
+  async function handleSaveTemplate() {
+    const name = workoutType.trim();
+    if (!name) {
+      alert('Inserisci il nome del template da salvare.');
+      return;
+    }
+
+    const normalizedSteps = normalizeSteps();
+    if (!normalizedSteps) return;
+
+    setSavingTemplate(true);
+    try {
+      const created = await createWorkoutTemplate({
+        discipline,
+        name,
+        description: templateDescription.trim() || null,
+        intensity: intensity.trim() || null,
+        duration: duration > 0 ? duration : null,
+        distance: distance > 0 ? distance : null,
+        workoutSteps: normalizedSteps,
+      });
+
+      setTemplates((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedTemplateId(created.id);
+      alert('Template salvato nella libreria.');
+    } catch (err) {
+      console.error(err);
+      alert('Errore durante il salvataggio del template.');
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate() {
+    if (!selectedTemplateId) return;
+
+    const template = templates.find((item) => item.id === selectedTemplateId);
+    if (!template) return;
+
+    const confirmed = window.confirm(`Eliminare il template "${template.name}"?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteWorkoutTemplate(selectedTemplateId);
+      setTemplates((prev) => prev.filter((item) => item.id !== selectedTemplateId));
+      setSelectedTemplateId('');
+    } catch (err) {
+      console.error(err);
+      alert('Errore durante eliminazione del template.');
+    }
+  }
+
   async function handleCreateWorkout() {
-    if (!selectedTemplate) return;
+    const workoutTypeTrimmed = workoutType.trim();
+    if (!workoutTypeTrimmed) {
+      alert('Inserisci un nome per il workout/template.');
+      return;
+    }
+
+    const normalizedSteps = normalizeSteps();
+    if (!normalizedSteps) return;
 
     const payload: CreateScheduledWorkout = {
       discipline,
-      workoutType: selectedTemplate.label,
-      title: `${selectedTemplate.label} - ${discipline.toUpperCase()}`,
-      description: selectedTemplate.description,
-      intensity: selectedTemplate.intensity,
+      workoutType: workoutTypeTrimmed,
+      title: workoutTypeTrimmed,
+      description: templateDescription.trim() || null,
+      workoutSteps: normalizedSteps,
+      intensity: intensity.trim() || null,
       scheduledDate: selectedDateKey,
-      scheduledTime,
-      duration,
-      distance,
+      scheduledTime: scheduledTime || null,
+      duration: duration > 0 ? duration : null,
+      distance: distance > 0 ? distance : null,
       status: 'planned',
     };
 
@@ -295,6 +436,49 @@ export default function Scheduling() {
             </div>
 
             <div className="grid gap-3">
+              <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-2">
+                <div className="text-sm text-slate-300 font-medium">Libreria template ({discipline.toUpperCase()})</div>
+                <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+                  <select
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 disabled:opacity-60"
+                    value={selectedTemplateId}
+                    onChange={(e) => setSelectedTemplateId(e.target.value)}
+                    disabled={templatesLoading}
+                  >
+                    <option value="">{templatesLoading ? 'Caricamento template...' : 'Seleziona template salvato'}</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>
+                        {template.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleApplyTemplate}
+                    disabled={!selectedTemplateId}
+                    className="rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-200 hover:border-slate-500 disabled:opacity-60"
+                  >
+                    Applica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteTemplate}
+                    disabled={!selectedTemplateId}
+                    className="rounded-lg border border-rose-700 px-3 py-2 text-xs text-rose-300 hover:border-rose-500 disabled:opacity-60"
+                  >
+                    Elimina
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveTemplate}
+                  disabled={savingTemplate}
+                  className="rounded-lg border border-emerald-700 px-3 py-2 text-xs text-emerald-300 hover:border-emerald-500 disabled:opacity-60"
+                >
+                  {savingTemplate ? 'Salvataggio template...' : 'Salva configurazione corrente in libreria'}
+                </button>
+              </div>
+
               <label className="text-sm text-slate-300">
                 Disciplina
                 <select
@@ -309,18 +493,36 @@ export default function Scheduling() {
               </label>
 
               <label className="text-sm text-slate-300">
-                Tipo workout
-                <select
+                Nome workout/template
+                <input
+                  type="text"
+                  value={workoutType}
+                  onChange={(e) => setWorkoutType(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
-                  value={templateValue}
-                  onChange={(e) => setTemplateValue(e.target.value)}
-                >
-                  {templatesByDiscipline[discipline].map((template) => (
-                    <option key={template.value} value={template.value}>
-                      {template.label}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="es. Ripetute soglia 6x1km"
+                />
+              </label>
+
+              <label className="text-sm text-slate-300">
+                Descrizione template
+                <textarea
+                  value={templateDescription}
+                  onChange={(e) => setTemplateDescription(e.target.value)}
+                  rows={3}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                  placeholder="Obiettivo della seduta, focus tecnico, recuperi..."
+                />
+              </label>
+
+              <label className="text-sm text-slate-300">
+                Intensita (facoltativa)
+                <input
+                  type="text"
+                  value={intensity}
+                  onChange={(e) => setIntensity(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100"
+                  placeholder="es. Media / Z3 / RPE 7"
+                />
               </label>
 
               <label className="text-sm text-slate-300">
@@ -359,10 +561,124 @@ export default function Scheduling() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-700 bg-slate-900 p-3">
-              <div className="text-slate-300 text-sm font-medium">Template</div>
-              <div className="text-slate-400 text-sm mt-1">{selectedTemplate.description}</div>
-              <div className="text-slate-500 text-xs mt-2">Intensita: {selectedTemplate.intensity}</div>
+            <div className="rounded-lg border border-slate-700 bg-slate-900 p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-slate-300 text-sm font-medium">Intervalli / Step</div>
+                <button
+                  type="button"
+                  onClick={addStep}
+                  className="rounded-md border border-slate-600 px-2 py-1 text-xs text-slate-200 hover:border-slate-500"
+                >
+                  + Aggiungi step
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {steps.map((step, index) => (
+                  <div key={`step-${index}`} className="rounded-lg border border-slate-700 bg-slate-950/50 p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs text-slate-400">Step {index + 1}</div>
+                      {steps.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeStep(index)}
+                          className="text-xs text-rose-400 hover:text-rose-300"
+                        >
+                          Rimuovi
+                        </button>
+                      )}
+                    </div>
+
+                    <label className="text-xs text-slate-300 block">
+                      Nome step
+                      <input
+                        type="text"
+                        value={step.name}
+                        onChange={(e) => updateStep(index, { name: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                        placeholder="es. Ripetuta 1"
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-xs text-slate-300">
+                        Durata (min)
+                        <input
+                          type="number"
+                          min={0}
+                          value={step.durationMinutes ?? ''}
+                          onChange={(e) => updateStep(index, { durationMinutes: Number(e.target.value) || null })}
+                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                        />
+                      </label>
+
+                      <div className="grid grid-cols-[1fr_90px] gap-2">
+                        <label className="text-xs text-slate-300">
+                          Distanza
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.1"
+                            value={step.distance ?? ''}
+                            onChange={(e) => updateStep(index, { distance: Number(e.target.value) || null })}
+                            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                          />
+                        </label>
+                        <label className="text-xs text-slate-300">
+                          Unita
+                          <select
+                            value={step.distanceUnit ?? 'km'}
+                            onChange={(e) => updateStep(index, { distanceUnit: e.target.value as 'km' | 'm' })}
+                            className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                          >
+                            <option value="km">km</option>
+                            <option value="m">m</option>
+                          </select>
+                        </label>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-xs text-slate-300">
+                        Metodo target
+                        <select
+                          value={step.targetType}
+                          onChange={(e) => updateStep(index, { targetType: e.target.value, targetValue: '' })}
+                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                        >
+                          {currentTargetOptions.map((targetOption) => (
+                            <option key={targetOption.value} value={targetOption.value}>
+                              {targetOption.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="text-xs text-slate-300">
+                        Valore target
+                        <input
+                          type="text"
+                          value={step.targetValue}
+                          onChange={(e) => updateStep(index, { targetValue: e.target.value })}
+                          className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                          placeholder={getTargetPlaceholder(step.targetType)}
+                        />
+                      </label>
+                    </div>
+
+                    <label className="text-xs text-slate-300 block">
+                      Note step (facoltative)
+                      <input
+                        type="text"
+                        value={step.notes ?? ''}
+                        onChange={(e) => updateStep(index, { notes: e.target.value })}
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                        placeholder="es. Recupero 90 sec jogging"
+                      />
+                    </label>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <button
@@ -399,6 +715,18 @@ export default function Scheduling() {
                     </button>
                   </div>
                   <div className="text-slate-400 text-sm mt-2">{workout.description}</div>
+                  {workout.workoutSteps && workout.workoutSteps.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {workout.workoutSteps.slice(0, 4).map((step, index) => (
+                        <div key={`${workout.id}-step-${index}`} className="text-xs text-slate-500">
+                          {formatStepSummary(step)}
+                        </div>
+                      ))}
+                      {workout.workoutSteps.length > 4 && (
+                        <div className="text-xs text-slate-500">+{workout.workoutSteps.length - 4} step aggiuntivi</div>
+                      )}
+                    </div>
+                  )}
                   <div className="mt-3 flex items-center justify-between">
                     <span className={`rounded-full px-2 py-1 text-xs ${statusClass[workout.status]}`}>{workout.status}</span>
                     <select

@@ -82,6 +82,15 @@ export const scheduledWorkouts = pgTable('scheduled_workouts', {
   workoutType: varchar('workout_type', { length: 100 }).notNull(),
   title: varchar('title', { length: 255 }).notNull(),
   description: text('description'),
+  workoutSteps: jsonb('workout_steps').$type<Array<{
+    name: string;
+    durationMinutes?: number | null;
+    distance?: number | null;
+    distanceUnit?: 'km' | 'm' | null;
+    targetType: string;
+    targetValue: string;
+    notes?: string | null;
+  }>>(),
   scheduledDate: date('scheduled_date').notNull(),
   scheduledTime: varchar('scheduled_time', { length: 5 }), // HH:mm
   duration: integer('duration'), // minutes
@@ -95,11 +104,37 @@ export const scheduledWorkouts = pgTable('scheduled_workouts', {
   disciplineIdx: index('scheduled_workouts_discipline_idx').on(table.discipline),
 }));
 
+export const workoutTemplates = pgTable('workout_templates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  discipline: varchar('discipline', { length: 50 }).notNull(),
+  name: varchar('name', { length: 120 }).notNull(),
+  description: text('description'),
+  intensity: varchar('intensity', { length: 50 }),
+  duration: integer('duration'), // minutes
+  distance: real('distance'), // km
+  workoutSteps: jsonb('workout_steps').$type<Array<{
+    name: string;
+    durationMinutes?: number | null;
+    distance?: number | null;
+    distanceUnit?: 'km' | 'm' | null;
+    targetType: string;
+    targetValue: string;
+    notes?: string | null;
+  }>>(),
+  createdAt: timestamp('created_at', { mode: 'string' }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { mode: 'string' }).defaultNow().notNull(),
+}, (table) => ({
+  userDisciplineIdx: index('workout_templates_user_discipline_idx').on(table.userId, table.discipline),
+  userCreatedIdx: index('workout_templates_user_created_idx').on(table.userId, table.createdAt),
+}));
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   activities: many(activities),
   metrics: many(metrics),
   scheduledWorkouts: many(scheduledWorkouts),
+  workoutTemplates: many(workoutTemplates),
 }));
 
 export const activitiesRelations = relations(activities, ({ one }) => ({
@@ -113,4 +148,8 @@ export const metricsRelations = relations(metrics, ({ one }) => ({
 
 export const scheduledWorkoutsRelations = relations(scheduledWorkouts, ({ one }) => ({
   user: one(users, { fields: [scheduledWorkouts.userId], references: [users.id] }),
+}));
+
+export const workoutTemplatesRelations = relations(workoutTemplates, ({ one }) => ({
+  user: one(users, { fields: [workoutTemplates.userId], references: [users.id] }),
 }));
