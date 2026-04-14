@@ -46,7 +46,15 @@ services:
       PORT: 3001
       DATABASE_URL: ${DATABASE_URL:-postgresql://trimetric:trimetric@postgres:5432/trimetric}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      BACKEND_URL: ${BACKEND_URL}
+      SESSION_SECRET: ${SESSION_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET}
+      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-}
+      STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN}
+      ZEPP_APP_TOKEN: ${ZEPP_APP_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
