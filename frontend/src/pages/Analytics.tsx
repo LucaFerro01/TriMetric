@@ -72,10 +72,10 @@ export default function Analytics() {
   const weeklyAgg = Object.values(
     weekly.reduce<Record<string, { week: string; distance: number; duration: number; calories: number; elevation: number }>>((acc, w) => {
       if (!acc[w.week]) acc[w.week] = { week: w.week, distance: 0, duration: 0, calories: 0, elevation: 0 };
-      acc[w.week].distance += w.totalDistance || 0;
-      acc[w.week].duration += w.totalDuration || 0;
-      acc[w.week].calories += w.totalCalories || 0;
-      acc[w.week].elevation += w.totalElevation || 0;
+      acc[w.week].distance += Number (w.totalDistance) || 0;
+      acc[w.week].duration += Number (w.totalDuration)|| 0;
+      acc[w.week].calories += Number (w.totalCalories) || 0;
+      acc[w.week].elevation += Number (w.totalElevation) || 0;
       return acc;
     }, {})
   ).sort((a, b) => a.week.localeCompare(b.week));
