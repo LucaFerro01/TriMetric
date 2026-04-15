@@ -92,6 +92,18 @@ const disciplineToActivityType: Record<Discipline, string> = {
   swim: 'swim',
 };
 
+/** Scheduled workout duration is in minutes; activities store duration in seconds. */
+const SECONDS_PER_MINUTE = 60;
+/** Scheduled workout distance is in km; activities store distance in meters. */
+const METERS_PER_KM = 1000;
+
+/** Maps workout status to a Tailwind dot color class used in mobile calendar indicators. */
+const statusDotClass: Record<WorkoutStatus, string> = {
+  planned: 'bg-sky-400',
+  completed: 'bg-emerald-400',
+  skipped: 'bg-rose-400',
+};
+
 function withinTenPercent(value: number, reference: number): boolean {
   if (reference === 0) return false;
   return Math.abs(value - reference) / reference <= 0.1;
@@ -110,10 +122,10 @@ function findMatchingActivity(workout: ScheduledWorkout, activities: Activity[])
     if (!hasDuration && !hasDistance) continue;
 
     const durationOk = hasDuration
-      ? activity.duration != null && withinTenPercent(activity.duration, workout.duration! * 60)
+      ? activity.duration != null && withinTenPercent(activity.duration, workout.duration! * SECONDS_PER_MINUTE)
       : true;
     const distanceOk = hasDistance
-      ? activity.distance != null && withinTenPercent(activity.distance, workout.distance! * 1000)
+      ? activity.distance != null && withinTenPercent(activity.distance, workout.distance! * METERS_PER_KM)
       : true;
 
     if (durationOk && distanceOk) return activity;
@@ -506,7 +518,7 @@ export default function Scheduling() {
                   {dayWorkouts.length > 0 && (
                     <div className="sm:hidden mt-1 flex flex-wrap gap-0.5">
                       {dayWorkouts.slice(0, 3).map((workout) => (
-                        <span key={workout.id} className={`block w-2 h-2 rounded-full ${statusClass[workout.status].includes('sky') ? 'bg-sky-400' : statusClass[workout.status].includes('emerald') ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+                        <span key={workout.id} className={`block w-2 h-2 rounded-full ${statusDotClass[workout.status]}`} />
                       ))}
                     </div>
                   )}
@@ -821,8 +833,8 @@ export default function Scheduling() {
                   {matchedActivity && (
                     <div className="mt-2 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-2 py-1.5 text-xs text-emerald-300">
                       ✓ Attività compatibile trovata: <span className="font-medium">{matchedActivity.name || matchedActivity.activityType}</span>
-                      {matchedActivity.duration && <span> · {Math.round(matchedActivity.duration / 60)} min</span>}
-                      {matchedActivity.distance && <span> · {(matchedActivity.distance / 1000).toFixed(1)} km</span>}
+                      {matchedActivity.duration && <span> · {Math.round(matchedActivity.duration / SECONDS_PER_MINUTE)} min</span>}
+                      {matchedActivity.distance && <span> · {(matchedActivity.distance / METERS_PER_KM).toFixed(1)} km</span>}
                     </div>
                   )}
                   <div className="text-slate-400 text-sm mt-2">{workout.description}</div>
