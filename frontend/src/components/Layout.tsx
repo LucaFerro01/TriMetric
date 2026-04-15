@@ -29,12 +29,12 @@ export default function Layout() {
           <Link
             key={to}
             to={to}
-            className={`flex-1 flex flex-col items-center py-2 text-xs gap-1 transition-colors ${
+            className={`flex-1 flex flex-col items-center py-2 gap-0.5 transition-colors ${
               pathname === to ? 'text-orange-500' : 'text-slate-400 hover:text-slate-100'
             }`}
           >
-            <Icon size={20} />
-            {label}
+            <Icon size={18} />
+            <span className="text-[9px] leading-tight truncate w-full text-center">{label}</span>
           </Link>
         ))}
       </nav>
