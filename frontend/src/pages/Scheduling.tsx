@@ -8,6 +8,7 @@ import {
   format,
   isSameDay,
   isSameMonth,
+  isToday,
   startOfMonth,
   startOfWeek,
   subMonths,
@@ -27,6 +28,7 @@ import {
   type WorkoutStatus,
   updateScheduledWorkout,
 } from '../api/scheduling';
+import { getActivities, type Activity } from '../api/activities';
 
 type WorkoutTargetOption = {
   value: string;
@@ -84,6 +86,53 @@ function toDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+const disciplineToActivityType: Record<Discipline, string> = {
+  run: 'run',
+  bike: 'ride',
+  swim: 'swim',
+};
+
+/** Scheduled workout duration is in minutes; activities store duration in seconds. */
+const SECONDS_PER_MINUTE = 60;
+/** Scheduled workout distance is in km; activities store distance in meters. */
+const METERS_PER_KM = 1000;
+
+/** Maps workout status to a Tailwind dot color class used in mobile calendar indicators. */
+const statusDotClass: Record<WorkoutStatus, string> = {
+  planned: 'bg-sky-400',
+  completed: 'bg-emerald-400',
+  skipped: 'bg-rose-400',
+};
+
+function withinTenPercent(value: number, reference: number): boolean {
+  if (reference === 0) return false;
+  return Math.abs(value - reference) / reference <= 0.1;
+}
+
+function findMatchingActivity(workout: ScheduledWorkout, activities: Activity[]): Activity | null {
+  const expectedType = disciplineToActivityType[workout.discipline];
+  const candidates = activities.filter(
+    (a) => a.activityType.toLowerCase() === expectedType
+  );
+
+  for (const activity of candidates) {
+    const hasDuration = workout.duration != null && workout.duration > 0;
+    const hasDistance = workout.distance != null && workout.distance > 0;
+
+    if (!hasDuration && !hasDistance) continue;
+
+    const durationOk = hasDuration
+      ? activity.duration != null && withinTenPercent(activity.duration, workout.duration! * SECONDS_PER_MINUTE)
+      : true;
+    const distanceOk = hasDistance
+      ? activity.distance != null && withinTenPercent(activity.distance, workout.distance! * METERS_PER_KM)
+      : true;
+
+    if (durationOk && distanceOk) return activity;
+  }
+  return null;
+}
+
 function buildDefaultStep(discipline: Discipline): WorkoutStep {
   const targetOption = targetOptionsByDiscipline[discipline][0];
   return {
@@ -128,6 +177,8 @@ export default function Scheduling() {
   const [duration, setDuration] = useState<number>(60);
   const [distance, setDistance] = useState<number>(0);
   const [steps, setSteps] = useState<WorkoutStep[]>([buildDefaultStep('run')]);
+  const [todayActivities, setTodayActivities] = useState<Activity[]>([]);
+  const [autoCompleting, setAutoCompleting] = useState(false);
 
   const visibleRange = useMemo(() => {
     const from = startOfWeek(startOfMonth(calendarMonth), { weekStartsOn: 1 });
@@ -181,6 +232,17 @@ export default function Scheduling() {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [visibleRange.from, visibleRange.to]);
+
+  useEffect(() => {
+    if (!isToday(selectedDate)) {
+      setTodayActivities([]);
+      return;
+    }
+    const dateKey = toDateKey(selectedDate);
+    getActivities({ from: dateKey, to: dateKey, limit: 50 })
+      .then(setTodayActivities)
+      .catch(console.error);
+  }, [selectedDate]);
 
   function updateStep(index: number, patch: Partial<WorkoutStep>) {
     setSteps((prev) => prev.map((step, i) => (i === index ? { ...step, ...patch } : step)));
@@ -349,6 +411,37 @@ export default function Scheduling() {
     }
   }
 
+  async function handleAutoComplete() {
+    const plannedWorkouts = selectedDayWorkouts.filter((w) => w.status === 'planned');
+    const matches = plannedWorkouts
+      .map((w) => ({ workout: w, activity: findMatchingActivity(w, todayActivities) }))
+      .filter((m) => m.activity !== null);
+
+    if (matches.length === 0) {
+      alert('Nessuna attività compatibile trovata per gli allenamenti pianificati di oggi.');
+      return;
+    }
+
+    const names = matches.map((m) => `• ${m.workout.title}`).join('\n');
+    const confirmed = window.confirm(
+      `Trovati ${matches.length} allenamento/i compatibili:\n${names}\n\nSegnarli come completati?`
+    );
+    if (!confirmed) return;
+
+    setAutoCompleting(true);
+    try {
+      for (const { workout } of matches) {
+        const updated = await updateScheduledWorkout(workout.id, { status: 'completed' });
+        setWorkouts((prev) => prev.map((w) => (w.id === workout.id ? updated : w)));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Errore durante il completamento automatico.');
+    } finally {
+      setAutoCompleting(false);
+    }
+  }
+
   if (loading) {
     return <div className="md:ml-56 animate-pulse text-slate-400 p-8">Loading scheduling...</div>;
   }
@@ -394,7 +487,7 @@ export default function Scheduling() {
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {calendarDays.map((day) => {
               const dayKey = toDateKey(day);
               const dayWorkouts = groupedByDate[dayKey] ?? [];
@@ -405,14 +498,14 @@ export default function Scheduling() {
                   key={dayKey}
                   type="button"
                   onClick={() => setSelectedDate(day)}
-                  className={`min-h-24 rounded-lg border p-2 text-left transition ${
+                  className={`min-h-14 sm:min-h-24 rounded-lg border p-1 sm:p-2 text-left transition ${
                     isSelected
                       ? 'border-orange-500 bg-orange-500/10'
                       : 'border-slate-700 bg-slate-900 hover:border-slate-500'
                   } ${isSameMonth(day, calendarMonth) ? 'text-slate-100' : 'text-slate-500'}`}
                 >
                   <div className="text-xs mb-1">{format(day, 'd')}</div>
-                  <div className="space-y-1">
+                  <div className="space-y-0.5 hidden sm:block">
                     {dayWorkouts.slice(0, 2).map((workout) => (
                       <div key={workout.id} className={`rounded px-1.5 py-0.5 text-[10px] ${statusClass[workout.status]}`}>
                         {workout.discipline.toUpperCase()} · {workout.workoutType}
@@ -422,6 +515,13 @@ export default function Scheduling() {
                       <div className="text-[10px] text-slate-400">+{dayWorkouts.length - 2} altri</div>
                     )}
                   </div>
+                  {dayWorkouts.length > 0 && (
+                    <div className="sm:hidden mt-1 flex flex-wrap gap-0.5">
+                      {dayWorkouts.slice(0, 3).map((workout) => (
+                        <span key={workout.id} className={`block w-2 h-2 rounded-full ${statusDotClass[workout.status]}`} />
+                      ))}
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -692,13 +792,29 @@ export default function Scheduling() {
           </div>
 
           <div className="bg-slate-800 rounded-xl border border-slate-700 p-4">
-            <h2 className="text-slate-200 font-medium mb-3">Allenamenti del giorno</h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-slate-200 font-medium">Allenamenti del giorno</h2>
+              {isToday(selectedDate) && selectedDayWorkouts.some((w) => w.status === 'planned') && (
+                <button
+                  type="button"
+                  onClick={handleAutoComplete}
+                  disabled={autoCompleting}
+                  className="rounded-lg border border-emerald-700 px-3 py-1.5 text-xs text-emerald-300 hover:border-emerald-500 disabled:opacity-60"
+                >
+                  {autoCompleting ? 'Verifica...' : '✓ Verifica completamento'}
+                </button>
+              )}
+            </div>
             {selectedDayWorkouts.length === 0 && (
               <div className="text-slate-500 text-sm">Nessun allenamento pianificato.</div>
             )}
             <div className="space-y-3">
-              {selectedDayWorkouts.map((workout) => (
-                <div key={workout.id} className="rounded-lg border border-slate-700 bg-slate-900 p-3">
+              {selectedDayWorkouts.map((workout) => {
+                const matchedActivity = isToday(selectedDate) && workout.status === 'planned'
+                  ? findMatchingActivity(workout, todayActivities)
+                  : null;
+                return (
+                <div key={workout.id} className={`rounded-lg border bg-slate-900 p-3 ${matchedActivity ? 'border-emerald-600/50' : 'border-slate-700'}`}>
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-slate-100 font-medium">{workout.title}</div>
@@ -714,6 +830,13 @@ export default function Scheduling() {
                       Elimina
                     </button>
                   </div>
+                  {matchedActivity && (
+                    <div className="mt-2 rounded-md bg-emerald-500/10 border border-emerald-500/30 px-2 py-1.5 text-xs text-emerald-300">
+                      ✓ Attività compatibile trovata: <span className="font-medium">{matchedActivity.name || matchedActivity.activityType}</span>
+                      {matchedActivity.duration && <span> · {Math.round(matchedActivity.duration / SECONDS_PER_MINUTE)} min</span>}
+                      {matchedActivity.distance && <span> · {(matchedActivity.distance / METERS_PER_KM).toFixed(1)} km</span>}
+                    </div>
+                  )}
                   <div className="text-slate-400 text-sm mt-2">{workout.description}</div>
                   {workout.workoutSteps && workout.workoutSteps.length > 0 && (
                     <div className="mt-2 space-y-1">
@@ -740,7 +863,8 @@ export default function Scheduling() {
                     </select>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

@@ -72,17 +72,19 @@ export default function Dashboard() {
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-slate-400">Period</span>
-        <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-1">
-          {PERIOD_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              onClick={() => setPeriod(option.value)}
-              className={`rounded-md px-3 py-1.5 text-sm transition ${period === option.value ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="overflow-x-auto pb-1">
+          <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-1 min-w-max">
+            {PERIOD_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setPeriod(option.value)}
+                className={`rounded-md px-3 py-1.5 text-sm transition ${period === option.value ? 'bg-orange-500 text-white' : 'text-slate-300 hover:bg-slate-700'}`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
