@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -26,6 +26,7 @@ const TOOL_TIMEOUTS_MS = {
   dependency_audit: 5 * 60 * 1000,
   impacted_quality_check: 15 * 60 * 1000,
   secret_scan: 2 * 60 * 1000,
+  mcp_syntax_check: 20 * 1000,
 };
 
 const WRITE_TOOLS = new Set(["dev_boot", "backend_migrate"]);
@@ -67,17 +68,23 @@ const SECRET_SCAN_SKIP_EXTENSIONS = new Set([
   ".mov",
   ".avi",
 ]);
+const ROOT_DEPENDENCY_FILES = new Set(["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]);
+const WORKSPACE_PREFIXES = {
+  backend: "backend/",
+  frontend: "frontend/",
+  mcpServer: "mcp-server/",
+};
 
 const SECRET_PATTERNS = [
   { name: "Private key material", severity: "critical", regex: /-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----/ },
-  { name: "GitHub token", severity: "high", regex: /\bgh[pousr]_[A-Za-z0-9]{36,255}\b/ },
+  { name: "GitHub token", severity: "high", regex: /\bgh(?:p|o|u|s|r)_[A-Za-z0-9]{36}\b/ },
   { name: "AWS access key", severity: "high", regex: /\bAKIA[0-9A-Z]{16}\b/ },
   { name: "Google API key", severity: "high", regex: /\bAIza[0-9A-Za-z\-_]{35}\b/ },
-  { name: "Slack token", severity: "high", regex: /\bxox[baprs]-[0-9A-Za-z-]{10,}\b/ },
+  { name: "Slack token", severity: "high", regex: /\bxox[baprs]-\d{10,13}-\d{10,13}-[A-Za-z0-9-]{20,}\b/ },
   {
     name: "Hardcoded credential assignment",
     severity: "medium",
-    regex: /\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*["']?[A-Za-z0-9/+=._-]{16,}["']?/i,
+    regex: /\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*["'`][^"'`\n]{16,}["'`]/i,
   },
 ];
 
@@ -213,11 +220,9 @@ function checkUrl(value) {
 function looksLikePlaceholder(matchValue) {
   const lowered = String(matchValue).toLowerCase();
   return (
-    lowered.includes("example") ||
-    lowered.includes("placeholder") ||
-    lowered.includes("replace_me") ||
-    lowered.includes("your_") ||
-    lowered.includes("change-this")
+    /\b(example|placeholder|replace_me|change-this)\b/.test(lowered) ||
+    lowered.startsWith("your_") ||
+    /(x{6,}|y{6,}|z{6,}|0{6,})/.test(lowered)
   );
 }
 
@@ -226,6 +231,14 @@ function countLinesBeforeIndex(content, index) {
     return 1;
   }
   return content.slice(0, index).split("\n").length;
+}
+
+function maskSensitiveValue(value) {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (text.length <= 12) {
+    return "********";
+  }
+  return `${text.slice(0, 2)}...${text.slice(-2)}`;
 }
 
 function collectFilesForSecretScan(baseDir) {
@@ -252,7 +265,7 @@ function collectFilesForSecretScan(baseDir) {
         continue;
       }
 
-      const ext = relPath.includes(".") ? `.${relPath.split(".").pop().toLowerCase()}` : "";
+      const ext = extname(relPath).toLowerCase();
       if (SECRET_SCAN_SKIP_EXTENSIONS.has(ext)) {
         continue;
       }
@@ -475,10 +488,10 @@ async function toolImpactedQualityCheck() {
   }
 
   const changed = [...files];
-  const rootChanges = changed.some((f) => ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"].includes(f));
-  const backendChanged = changed.some((f) => f.startsWith("backend/"));
-  const frontendChanged = changed.some((f) => f.startsWith("frontend/"));
-  const mcpChanged = changed.some((f) => f.startsWith("mcp-server/"));
+  const rootChanges = changed.some((f) => ROOT_DEPENDENCY_FILES.has(f));
+  const backendChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.backend));
+  const frontendChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.frontend));
+  const mcpChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.mcpServer));
 
   const runs = [];
   if (rootChanges) {
@@ -495,7 +508,7 @@ async function toolImpactedQualityCheck() {
     }
   }
   if (mcpChanged) {
-    runs.push({ label: "mcp-server syntax", command: "node", args: ["--check", "mcp-server/src/index.js"], timeoutMs: TOOL_TIMEOUTS_MS.secret_scan });
+    runs.push({ label: "mcp-server syntax", command: "node", args: ["--check", "mcp-server/src/index.js"], timeoutMs: TOOL_TIMEOUTS_MS.mcp_syntax_check });
   }
 
   if (!runs.length) {
@@ -553,22 +566,28 @@ async function toolSecretScan() {
 
     scannedFiles += 1;
     for (const pattern of SECRET_PATTERNS) {
-      const match = pattern.regex.exec(content);
-      if (!match) {
-        continue;
-      }
-      if (looksLikePlaceholder(match[0])) {
-        continue;
-      }
+      const flagSet = new Set(pattern.regex.flags.split(""));
+      flagSet.add("g");
+      const flags = [...flagSet].join("");
+      const scanRegex = new RegExp(pattern.regex.source, flags);
+      let match;
+      while ((match = scanRegex.exec(content)) !== null) {
+        if (looksLikePlaceholder(match[0])) {
+          continue;
+        }
 
-      findings.push({
-        file: file.relPath,
-        line: countLinesBeforeIndex(content, match.index ?? 0),
-        type: pattern.name,
-        severity: pattern.severity,
-        sample: sanitizeOutput(match[0]),
-      });
+        findings.push({
+          file: file.relPath,
+          line: countLinesBeforeIndex(content, match.index),
+          type: pattern.name,
+          severity: pattern.severity,
+          sample: maskSensitiveValue(match[0]),
+        });
 
+        if (findings.length >= SECRET_SCAN_MAX_MATCHES) {
+          break;
+        }
+      }
       if (findings.length >= SECRET_SCAN_MAX_MATCHES) {
         break;
       }
