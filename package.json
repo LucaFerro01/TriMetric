@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "pnpm --parallel --filter './backend' --filter './frontend' dev",
     "build": "pnpm --filter './backend' build && pnpm --filter './frontend' build",
-    "lint": "pnpm --recursive lint"
+    "lint": "pnpm --recursive lint",
+    "mcp:start": "pnpm --filter @trimetric/mcp-server start",
+    "mcp:start:write": "MCP_MODE=write pnpm --filter @trimetric/mcp-server start"
   }
 }
