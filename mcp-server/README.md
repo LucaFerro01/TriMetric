@@ -10,6 +10,9 @@ Local MCP server for safe development automation in this repository.
 - `backend_migrate`: runs backend migrations with explicit confirmation
 - `changed_files_review`: summarizes current git changes with risk hints
 - `env_sanity_check`: checks required env values and common misconfigurations
+- `dependency_audit`: runs `pnpm audit --recursive --prod --audit-level high`
+- `impacted_quality_check`: runs lint/build only on workspaces touched by current git changes
+- `secret_scan`: scans repository files for likely hardcoded secrets/key material
 
 ## Guardrails
 
@@ -17,6 +20,7 @@ Local MCP server for safe development automation in this repository.
 - Scope lock to repository root
 - Timeout per tool
 - Manual confirmation required for `backend_migrate`
+- Secret scan ignores binary/build directories and caps output to reduce noise
 - Invocation logging in `.mcp/invocations.log`
 - Readonly/write mode split via `MCP_MODE`
 
