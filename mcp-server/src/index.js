@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -23,11 +23,70 @@ const TOOL_TIMEOUTS_MS = {
   backend_migrate: 5 * 60 * 1000,
   changed_files_review: 60 * 1000,
   env_sanity_check: 30 * 1000,
+  dependency_audit: 5 * 60 * 1000,
+  impacted_quality_check: 15 * 60 * 1000,
+  secret_scan: 2 * 60 * 1000,
+  mcp_syntax_check: 20 * 1000,
 };
 
 const WRITE_TOOLS = new Set(["dev_boot", "backend_migrate"]);
-const APPROVED_COMMANDS = new Set(["pnpm", "docker", "git"]);
+const APPROVED_COMMANDS = new Set(["pnpm", "docker", "git", "node"]);
 const MAX_OUTPUT_CHARS = 12000;
+const SECRET_SCAN_MAX_FILE_BYTES = 512 * 1024;
+const SECRET_SCAN_MAX_MATCHES = 100;
+const SECRET_SCAN_IGNORE_DIRS = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".mcp",
+  ".next",
+  ".turbo",
+]);
+const SECRET_SCAN_SKIP_EXTENSIONS = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".ico",
+  ".svg",
+  ".pdf",
+  ".zip",
+  ".gz",
+  ".tar",
+  ".tgz",
+  ".wasm",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".map",
+  ".mp3",
+  ".mp4",
+  ".mov",
+  ".avi",
+]);
+const ROOT_DEPENDENCY_FILES = new Set(["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"]);
+const WORKSPACE_PREFIXES = {
+  backend: "backend/",
+  frontend: "frontend/",
+  mcpServer: "mcp-server/",
+};
+
+const SECRET_PATTERNS = [
+  { name: "Private key material", severity: "critical", regex: /-----BEGIN (?:RSA |DSA |EC |OPENSSH )?PRIVATE KEY-----/ },
+  { name: "GitHub token", severity: "high", regex: /\bgh(?:p|o|u|s|r)_[A-Za-z0-9]{36}\b/ },
+  { name: "AWS access key", severity: "high", regex: /\bAKIA[0-9A-Z]{16}\b/ },
+  { name: "Google API key", severity: "high", regex: /\bAIza[0-9A-Za-z\-_]{35}\b/ },
+  { name: "Slack token", severity: "high", regex: /\bxox[baprs]-\d{10,13}-\d{10,13}-[A-Za-z0-9-]{20,}\b/ },
+  {
+    name: "Hardcoded credential assignment",
+    severity: "medium",
+    regex: /\b(?:api[_-]?key|secret|token|password)\b\s*[:=]\s*["'`][^"'`\n]{16,}["'`]/i,
+  },
+];
 
 mkdirSync(dirname(LOG_PATH), { recursive: true });
 
@@ -156,6 +215,71 @@ function checkUrl(value) {
   } catch {
     return false;
   }
+}
+
+function looksLikePlaceholder(matchValue) {
+  const lowered = String(matchValue).toLowerCase();
+  return (
+    /\b(example|placeholder|replace_me|change-this)\b/.test(lowered) ||
+    lowered.startsWith("your_") ||
+    /(x{6,}|y{6,}|z{6,}|0{6,})/.test(lowered)
+  );
+}
+
+function countLinesBeforeIndex(content, index) {
+  if (index <= 0) {
+    return 1;
+  }
+  return content.slice(0, index).split("\n").length;
+}
+
+function maskSensitiveValue(value) {
+  const text = String(value).replace(/\s+/g, " ").trim();
+  if (text.length <= 12) {
+    return "********";
+  }
+  return `${text.slice(0, 2)}...${text.slice(-2)}`;
+}
+
+function collectFilesForSecretScan(baseDir) {
+  const files = [];
+  const queue = [baseDir];
+
+  while (queue.length) {
+    const current = queue.pop();
+    const entries = readdirSync(current, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const absPath = join(current, entry.name);
+      const relPath = absPath.slice(REPO_ROOT.length + 1).replaceAll("\\", "/");
+
+      if (entry.isDirectory()) {
+        if (SECRET_SCAN_IGNORE_DIRS.has(entry.name)) {
+          continue;
+        }
+        queue.push(absPath);
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const ext = extname(relPath).toLowerCase();
+      if (SECRET_SCAN_SKIP_EXTENSIONS.has(ext)) {
+        continue;
+      }
+
+      const stats = statSync(absPath);
+      if (stats.size > SECRET_SCAN_MAX_FILE_BYTES) {
+        continue;
+      }
+
+      files.push({ absPath, relPath });
+    }
+  }
+
+  return files;
 }
 
 async function toolQualityCheck() {
@@ -333,6 +457,163 @@ async function toolEnvSanityCheck() {
   };
 }
 
+async function toolDependencyAudit() {
+  return runApprovedCommand({
+    toolName: "dependency_audit",
+    command: "pnpm",
+    args: ["audit", "--recursive", "--prod", "--audit-level", "high"],
+    timeoutMs: TOOL_TIMEOUTS_MS.dependency_audit,
+  });
+}
+
+async function toolImpactedQualityCheck() {
+  const [unstagedNames, stagedNames] = await Promise.all([
+    runApprovedCommand({ toolName: "impacted_quality_check", command: "git", args: ["diff", "--name-only"], timeoutMs: TOOL_TIMEOUTS_MS.impacted_quality_check }),
+    runApprovedCommand({ toolName: "impacted_quality_check", command: "git", args: ["diff", "--name-only", "--cached"], timeoutMs: TOOL_TIMEOUTS_MS.impacted_quality_check }),
+  ]);
+
+  const files = new Set(
+    [unstagedNames.stdout, stagedNames.stdout]
+      .flatMap((chunk) => chunk.split(/\r?\n/).map((line) => line.trim()))
+      .filter(Boolean)
+  );
+
+  if (files.size === 0) {
+    return {
+      stdout: "No changed files detected; impacted checks skipped.",
+      stderr: [unstagedNames.stderr, stagedNames.stderr].filter(Boolean).join("\n"),
+      exitCode: 0,
+      durationMs: 0,
+    };
+  }
+
+  const changed = [...files];
+  const rootChanges = changed.some((f) => ROOT_DEPENDENCY_FILES.has(f));
+  const backendChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.backend));
+  const frontendChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.frontend));
+  const mcpChanged = changed.some((f) => f.startsWith(WORKSPACE_PREFIXES.mcpServer));
+
+  const runs = [];
+  if (rootChanges) {
+    runs.push({ label: "workspace lint", command: "pnpm", args: ["lint"], timeoutMs: TOOL_TIMEOUTS_MS.quality_check });
+    runs.push({ label: "workspace build", command: "pnpm", args: ["build"], timeoutMs: TOOL_TIMEOUTS_MS.build_check });
+  } else {
+    if (backendChanged) {
+      runs.push({ label: "backend lint", command: "pnpm", args: ["--filter", "@trimetric/backend", "lint"], timeoutMs: TOOL_TIMEOUTS_MS.quality_check });
+      runs.push({ label: "backend build", command: "pnpm", args: ["--filter", "@trimetric/backend", "build"], timeoutMs: TOOL_TIMEOUTS_MS.build_check });
+    }
+    if (frontendChanged) {
+      runs.push({ label: "frontend lint", command: "pnpm", args: ["--filter", "frontend", "lint"], timeoutMs: TOOL_TIMEOUTS_MS.quality_check });
+      runs.push({ label: "frontend build", command: "pnpm", args: ["--filter", "frontend", "build"], timeoutMs: TOOL_TIMEOUTS_MS.build_check });
+    }
+  }
+  if (mcpChanged) {
+    runs.push({ label: "mcp-server syntax", command: "node", args: ["--check", "mcp-server/src/index.js"], timeoutMs: TOOL_TIMEOUTS_MS.mcp_syntax_check });
+  }
+
+  if (!runs.length) {
+    return {
+      stdout: `Changed files (${changed.length}) do not impact known quality targets.`,
+      stderr: "",
+      exitCode: 0,
+      durationMs: 0,
+    };
+  }
+
+  const outputs = [];
+  let exitCode = 0;
+  for (const run of runs) {
+    const result = await runApprovedCommand({
+      toolName: "impacted_quality_check",
+      command: run.command,
+      args: run.args,
+      timeoutMs: run.timeoutMs,
+    });
+    outputs.push(`[${run.label}] exitCode=${result.exitCode}\nstdout:\n${result.stdout || "(empty)"}\n${result.stderr ? `stderr:\n${result.stderr}` : ""}`.trim());
+    if (result.exitCode !== 0) {
+      exitCode = 1;
+    }
+  }
+
+  return {
+    stdout: [`Changed files (${changed.length}): ${changed.sort().join(", ")}`, ...outputs].join("\n\n"),
+    stderr: "",
+    exitCode,
+    durationMs: 0,
+  };
+}
+
+async function toolSecretScan() {
+  const files = collectFilesForSecretScan(REPO_ROOT);
+  const findings = [];
+  let scannedFiles = 0;
+
+  for (const file of files) {
+    if (findings.length >= SECRET_SCAN_MAX_MATCHES) {
+      break;
+    }
+
+    let content = "";
+    try {
+      content = readFileSync(file.absPath, "utf8");
+    } catch {
+      continue;
+    }
+
+    if (!content || content.includes("\u0000")) {
+      continue;
+    }
+
+    scannedFiles += 1;
+    for (const pattern of SECRET_PATTERNS) {
+      const flagSet = new Set(pattern.regex.flags.split(""));
+      flagSet.add("g");
+      const flags = [...flagSet].join("");
+      const scanRegex = new RegExp(pattern.regex.source, flags);
+      let match;
+      while ((match = scanRegex.exec(content)) !== null) {
+        if (looksLikePlaceholder(match[0])) {
+          continue;
+        }
+
+        findings.push({
+          file: file.relPath,
+          line: countLinesBeforeIndex(content, match.index),
+          type: pattern.name,
+          severity: pattern.severity,
+          sample: maskSensitiveValue(match[0]),
+        });
+
+        if (findings.length >= SECRET_SCAN_MAX_MATCHES) {
+          break;
+        }
+      }
+      if (findings.length >= SECRET_SCAN_MAX_MATCHES) {
+        break;
+      }
+    }
+  }
+
+  const criticalOrHigh = findings.filter((f) => f.severity === "critical" || f.severity === "high");
+  const details = findings
+    .map((f) => `- [${f.severity}] ${f.type} at ${f.file}:${f.line} | sample: ${f.sample}`)
+    .join("\n");
+
+  const summary = [
+    `Scanned files: ${scannedFiles}`,
+    `Findings: ${findings.length}`,
+    criticalOrHigh.length ? `Critical/High findings: ${criticalOrHigh.length}` : "Critical/High findings: 0",
+    findings.length ? `Details:\n${details}` : "Details: none",
+  ].join("\n\n");
+
+  return {
+    stdout: summary,
+    stderr: "",
+    exitCode: criticalOrHigh.length ? 1 : 0,
+    durationMs: 0,
+  };
+}
+
 const tools = [
   {
     name: "quality_check",
@@ -399,6 +680,33 @@ const tools = [
       additionalProperties: false,
     },
   },
+  {
+    name: "dependency_audit",
+    description: "Run dependency vulnerability audit (pnpm audit --recursive --prod --audit-level high).",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "impacted_quality_check",
+    description: "Run lint/build only for changed workspaces; includes MCP server syntax check when impacted.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "secret_scan",
+    description: "Scan repository files for likely hardcoded secrets and key material.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
 ];
 
 const server = new Server(
@@ -441,6 +749,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "env_sanity_check":
         result = await toolEnvSanityCheck();
+        break;
+      case "dependency_audit":
+        result = await toolDependencyAudit();
+        break;
+      case "impacted_quality_check":
+        result = await toolImpactedQualityCheck();
+        break;
+      case "secret_scan":
+        result = await toolSecretScan();
         break;
       default:
         throw new Error(`Unknown tool: ${toolName}`);
