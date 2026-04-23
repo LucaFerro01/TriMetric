@@ -22,7 +22,7 @@ function isMatchingDiscipline(discipline: Discipline, activityType: string): boo
 }
 
 function relativeDifference(actual: number, expected: number): number {
-  if (expected <= 0) return Number.POSITIVE_INFINITY;
+  if (actual <= 0 || expected <= 0) return Number.POSITIVE_INFINITY;
   return Math.abs(actual - expected) / expected;
 }
 
@@ -32,12 +32,14 @@ function isWithinTolerance(actual: number | null | undefined, expected: number |
 }
 
 export function findMatchingActivity(workout: ScheduledWorkout, activities: Activity[]): Activity | null {
-  const hasDuration = workout.duration != null && workout.duration > 0;
-  const hasDistance = workout.distance != null && workout.distance > 0;
+  const workoutDurationMinutes = workout.duration;
+  const workoutDistanceKm = workout.distance;
+  const hasDuration = workoutDurationMinutes != null && workoutDurationMinutes > 0;
+  const hasDistance = workoutDistanceKm != null && workoutDistanceKm > 0;
   if (!hasDuration && !hasDistance) return null;
 
-  const expectedDuration = hasDuration ? workout.duration! * SECONDS_PER_MINUTE : null;
-  const expectedDistance = hasDistance ? workout.distance! * METERS_PER_KM : null;
+  const expectedDuration = hasDuration ? workoutDurationMinutes * SECONDS_PER_MINUTE : null;
+  const expectedDistance = hasDistance ? workoutDistanceKm * METERS_PER_KM : null;
 
   const candidates = activities.filter((activity) => isMatchingDiscipline(workout.discipline, activity.activityType));
 

@@ -34,12 +34,18 @@ function getUserId(req: Request): string | null {
   }
 }
 
-function normalizeDateBoundary(value: string, boundary: 'start' | 'end'): string {
+/**
+ * Normalize incoming date filters to ISO timestamps.
+ * - For `YYYY-MM-DD`, expands to start/end of that day in UTC based on boundary.
+ * - For generic date-time strings, returns normalized ISO if valid.
+ * - Returns null when the input cannot be parsed as a date.
+ */
+function normalizeDateBoundary(value: string, boundary: 'start' | 'end'): string | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return `${value}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`;
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 // GET /activities
@@ -48,10 +54,15 @@ router.get('/', async (req: Request, res: Response) => {
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   const { from, to, type, limit = '50', offset = '0' } = req.query as Record<string, string>;
+  const normalizedFrom = from ? normalizeDateBoundary(from, 'start') : null;
+  const normalizedTo = to ? normalizeDateBoundary(to, 'end') : null;
+
+  if (from && !normalizedFrom) return res.status(400).json({ error: 'Invalid from date' });
+  if (to && !normalizedTo) return res.status(400).json({ error: 'Invalid to date' });
 
   const conditions = [eq(activities.userId, userId)];
-  if (from) conditions.push(gte(activities.startTime, normalizeDateBoundary(from, 'start')));
-  if (to) conditions.push(lte(activities.startTime, normalizeDateBoundary(to, 'end')));
+  if (normalizedFrom) conditions.push(gte(activities.startTime, normalizedFrom));
+  if (normalizedTo) conditions.push(lte(activities.startTime, normalizedTo));
   if (type) conditions.push(eq(activities.activityType, type));
 
   const rows = await db.select().from(activities)
