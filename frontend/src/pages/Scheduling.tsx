@@ -29,6 +29,7 @@ import {
   updateScheduledWorkout,
 } from '../api/scheduling';
 import { getActivities, type Activity } from '../api/activities';
+import { findMatchingActivity } from './scheduling/matching';
 
 type WorkoutTargetOption = {
   value: string;
@@ -86,12 +87,6 @@ function toDateKey(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
-const disciplineToActivityType: Record<Discipline, string> = {
-  run: 'run',
-  bike: 'ride',
-  swim: 'swim',
-};
-
 /** Scheduled workout duration is in minutes; activities store duration in seconds. */
 const SECONDS_PER_MINUTE = 60;
 /** Scheduled workout distance is in km; activities store distance in meters. */
@@ -103,35 +98,6 @@ const statusDotClass: Record<WorkoutStatus, string> = {
   completed: 'bg-emerald-400',
   skipped: 'bg-rose-400',
 };
-
-function withinTenPercent(value: number, reference: number): boolean {
-  if (reference === 0) return false;
-  return Math.abs(value - reference) / reference <= 0.1;
-}
-
-function findMatchingActivity(workout: ScheduledWorkout, activities: Activity[]): Activity | null {
-  const expectedType = disciplineToActivityType[workout.discipline];
-  const candidates = activities.filter(
-    (a) => a.activityType.toLowerCase() === expectedType
-  );
-
-  for (const activity of candidates) {
-    const hasDuration = workout.duration != null && workout.duration > 0;
-    const hasDistance = workout.distance != null && workout.distance > 0;
-
-    if (!hasDuration && !hasDistance) continue;
-
-    const durationOk = hasDuration
-      ? activity.duration != null && withinTenPercent(activity.duration, workout.duration! * SECONDS_PER_MINUTE)
-      : true;
-    const distanceOk = hasDistance
-      ? activity.distance != null && withinTenPercent(activity.distance, workout.distance! * METERS_PER_KM)
-      : true;
-
-    if (durationOk && distanceOk) return activity;
-  }
-  return null;
-}
 
 function buildDefaultStep(discipline: Discipline): WorkoutStep {
   const targetOption = targetOptionsByDiscipline[discipline][0];
@@ -430,10 +396,11 @@ export default function Scheduling() {
 
     setAutoCompleting(true);
     try {
-      for (const { workout } of matches) {
-        const updated = await updateScheduledWorkout(workout.id, { status: 'completed' });
-        setWorkouts((prev) => prev.map((w) => (w.id === workout.id ? updated : w)));
-      }
+      const updatedWorkouts = await Promise.all(
+        matches.map(({ workout }) => updateScheduledWorkout(workout.id, { status: 'completed' }))
+      );
+      const updatedById = new Map(updatedWorkouts.map((workout) => [workout.id, workout]));
+      setWorkouts((prev) => prev.map((workout) => updatedById.get(workout.id) ?? workout));
     } catch (err) {
       console.error(err);
       alert('Errore durante il completamento automatico.');

@@ -42,7 +42,8 @@ app.use((_req, res) => {
 });
 
 // Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  void next;
   console.error(err.stack);
   res.status(500).json({ error: 'Internal server error' });
 });

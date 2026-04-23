@@ -6,7 +6,6 @@ import { eq, and, gte, lte, desc, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 import { parseFitFile, parseGpxFile } from '../services/fitgpx.service';
 import { aggregateDailyMetrics } from '../services/metrics.service';
@@ -35,6 +34,14 @@ function getUserId(req: Request): string | null {
   }
 }
 
+function normalizeDateBoundary(value: string, boundary: 'start' | 'end'): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T${boundary === 'start' ? '00:00:00.000' : '23:59:59.999'}Z`;
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 // GET /activities
 router.get('/', async (req: Request, res: Response) => {
   const userId = getUserId(req);
@@ -43,8 +50,8 @@ router.get('/', async (req: Request, res: Response) => {
   const { from, to, type, limit = '50', offset = '0' } = req.query as Record<string, string>;
 
   const conditions = [eq(activities.userId, userId)];
-  if (from) conditions.push(gte(activities.startTime, from));
-  if (to) conditions.push(lte(activities.startTime, to));
+  if (from) conditions.push(gte(activities.startTime, normalizeDateBoundary(from, 'start')));
+  if (to) conditions.push(lte(activities.startTime, normalizeDateBoundary(to, 'end')));
   if (type) conditions.push(eq(activities.activityType, type));
 
   const rows = await db.select().from(activities)

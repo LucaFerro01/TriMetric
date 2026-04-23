@@ -99,6 +99,19 @@ If you are using Docker Compose, the API port is published on the host so you ca
 
 For frontend-only local dev, `VITE_API_URL` is optional. If omitted, login defaults to `http://<host>:3001/auth/strava`.
 
+## Quality Checks
+
+```bash
+# Lint all workspaces
+pnpm lint
+
+# Build backend + frontend
+pnpm build
+
+# Run frontend unit tests
+pnpm --filter './frontend' test
+```
+
 ## Strava Setup
 
 1. Create an app at https://www.strava.com/settings/api
