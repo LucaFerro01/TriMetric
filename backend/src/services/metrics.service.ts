@@ -1,6 +1,6 @@
 import { db } from '../db';
-import { activities, metrics, users } from '../db/schema';
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { activities, metrics } from '../db/schema';
+import { eq, and, gte, lte } from 'drizzle-orm';
 
 /**
  * Estimate VO2max using Cooper's formula.

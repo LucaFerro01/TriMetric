@@ -4,7 +4,7 @@ import { metrics, activities, users } from '../db/schema';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import { estimateVO2MaxRun, estimateVO2MaxBike, estimateFTP, calculateTDEE, estimateCaloriesBurned } from '../services/metrics.service';
+import { estimateVO2MaxRun, estimateVO2MaxBike, calculateTDEE, estimateCaloriesBurned } from '../services/metrics.service';
 
 const router: Router = Router();
 
