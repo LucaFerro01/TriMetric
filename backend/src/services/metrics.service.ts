@@ -2,6 +2,8 @@ import { db } from '../db';
 import { activities, metrics } from '../db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 
+const METERS_PER_KILOMETER = 1000;
+
 /**
  * Estimate VO2max using Cooper's formula.
  * @param distanceMeters Distance in meters covered in 12 minutes
@@ -23,6 +25,11 @@ export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): 
   return vo2 / percentMax;
 }
 
+/**
+ * Parse a positive finite number from unknown input.
+ * Accepts numeric values or strings that are either numeric, MM:SS, or HH:MM:SS.
+ * Returns null for invalid, non-finite, non-positive, or unsupported formats.
+ */
 function toFinitePositiveNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
   if (typeof value === 'string') {
@@ -53,16 +60,20 @@ export function extractGapPaceSecondsPerKm(rawData: unknown): number | null {
   for (const key of paceKeys) {
     const value = toFinitePositiveNumber(data[key]);
     if (!value) continue;
-    // Accept either sec/km (typical 120-1200) or min/km (typical 2-20)
-    if (value >= 90 && value <= 2000) return value;
+    // min/km guardrails first: 2 to 30 min/km, converted to sec/km (×60).
     if (value >= 2 && value <= 30) return value * 60;
+    // sec/km guardrails for larger numeric values: >30s/km up to 2000s/km (33:20).
+    // 2000 sec/km is a defensive upper bound to reject clearly invalid outliers.
+    if (value > 30 && value <= 2000) return value;
   }
 
   const speedKeys = ['gap_speed', 'grade_adjusted_speed', 'average_grade_adjusted_speed'];
   for (const key of speedKeys) {
     const speedMps = toFinitePositiveNumber(data[key]);
     if (!speedMps) continue;
-    if (speedMps > 0.5 && speedMps < 12) return 1000 / speedMps;
+    // speed guardrails: 0.5 to 12 m/s (~1.8 to 43.2 km/h) to exclude invalid outliers.
+    // METERS_PER_KILOMETER converts m/s speed into sec/km pace.
+    if (speedMps > 0.5 && speedMps < 12) return METERS_PER_KILOMETER / speedMps;
   }
 
   return null;
@@ -74,7 +85,7 @@ export function extractGapPaceSecondsPerKm(rawData: unknown): number | null {
 export function getGapAdjustedRunDurationSeconds(distanceMeters: number, durationSeconds: number, rawData: unknown): number {
   const gapPaceSecondsPerKm = extractGapPaceSecondsPerKm(rawData);
   if (!gapPaceSecondsPerKm || distanceMeters <= 0) return durationSeconds;
-  const gapAdjustedDuration = gapPaceSecondsPerKm * (distanceMeters / 1000);
+  const gapAdjustedDuration = gapPaceSecondsPerKm * distanceMeters / METERS_PER_KILOMETER;
   return gapAdjustedDuration > 0 ? gapAdjustedDuration : durationSeconds;
 }
 

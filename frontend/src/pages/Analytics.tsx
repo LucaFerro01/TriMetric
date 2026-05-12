@@ -11,11 +11,12 @@ type Vo2MaxPoint = {
 };
 
 type Vo2Mode = 'run' | 'bike';
+const METERS_PER_KILOMETER = 1000;
 
 function estimateRunVo2max(activity: Activity): number | null {
   if (!activity.distance || !activity.duration || activity.duration <= 0) return null;
   const gapAdjustedDuration = activity.gapPace
-    ? activity.gapPace * (activity.distance / 1000)
+    ? activity.gapPace * (activity.distance / METERS_PER_KILOMETER)
     : activity.duration;
   const speedMetersPerMinute = activity.distance / (gapAdjustedDuration / 60);
   const oxygenCost = -4.60 + 0.182258 * speedMetersPerMinute + 0.000104 * speedMetersPerMinute * speedMetersPerMinute;

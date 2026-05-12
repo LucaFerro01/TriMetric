@@ -1,5 +1,5 @@
 import type { Activity } from '../api/activities';
-import { formatDuration, formatDistance, formatDate } from '../utils/format';
+import { formatDuration, formatDistance, formatDate, formatSecondsPerKm } from '../utils/format';
 import { Link } from 'react-router-dom';
 
 const typeEmoji: Record<string, string> = {
@@ -13,9 +13,7 @@ interface Props {
 
 export default function ActivityCard({ activity }: Props) {
   const emoji = typeEmoji[activity.activityType] || '🏅';
-  const gapPace = activity.gapPace
-    ? `${Math.floor(activity.gapPace / 60)}:${Math.floor(activity.gapPace % 60).toString().padStart(2, '0')} /km`
-    : null;
+  const gapPace = activity.gapPace ? formatSecondsPerKm(activity.gapPace) : null;
 
   return (
     <Link to={`/activities/${activity.id}`} className="block bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-orange-500/50 transition-colors">
