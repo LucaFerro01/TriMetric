@@ -4,7 +4,13 @@ import { metrics, activities, users } from '../db/schema';
 import { eq, and, gte, desc, sql } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import { estimateVO2MaxRun, estimateVO2MaxBike, calculateTDEE, estimateCaloriesBurned } from '../services/metrics.service';
+import {
+  estimateVO2MaxRun,
+  estimateVO2MaxBike,
+  calculateTDEE,
+  estimateCaloriesBurned,
+  getGapAdjustedRunDurationSeconds,
+} from '../services/metrics.service';
 
 const router: Router = Router();
 
@@ -57,7 +63,7 @@ router.get('/vo2max', async (req: Request, res: Response) => {
     .filter((r) => r.distance && r.duration && r.distance > 1000)
     .map((r) => ({
       date: r.startTime,
-      vo2max: estimateVO2MaxRun(r.distance!, r.duration!),
+      vo2max: estimateVO2MaxRun(r.distance!, getGapAdjustedRunDurationSeconds(r.distance!, r.duration!, r.rawData)),
       activityId: r.id,
     }));
 

@@ -16,6 +16,7 @@ export interface Activity {
   avgPower?: number;
   maxPower?: number;
   avgSpeed?: number;
+  gapPace?: number; // sec/km (GAP)
   calories?: number;
   createdAt: string;
 }

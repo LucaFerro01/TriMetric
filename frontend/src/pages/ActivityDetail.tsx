@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getActivity, deleteActivity } from '../api/activities';
 import type { Activity } from '../api/activities';
-import { formatDuration, formatDistance, formatDate, formatTime } from '../utils/format';
+import { formatDuration, formatDistance, formatDate, formatTime, formatSecondsPerKm } from '../utils/format';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { ArrowLeft, Trash2 } from 'lucide-react';
 
@@ -82,6 +82,12 @@ export default function ActivityDetail() {
           <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
             <div className="text-slate-400 text-sm">Avg Power</div>
             <div className="text-xl font-bold mt-1">{activity.avgPower} <span className="text-sm font-normal">W</span></div>
+          </div>
+        )}
+        {activity.activityType === 'run' && activity.gapPace && (
+          <div className="bg-slate-800 rounded-xl p-4 border border-slate-700">
+            <div className="text-slate-400 text-sm">GAP</div>
+            <div className="text-xl font-bold mt-1">{formatSecondsPerKm(activity.gapPace)}</div>
           </div>
         )}
         {activity.calories && (

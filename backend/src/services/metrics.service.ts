@@ -2,6 +2,8 @@ import { db } from '../db';
 import { activities, metrics } from '../db/schema';
 import { eq, and, gte, lte } from 'drizzle-orm';
 
+const METERS_PER_KILOMETER = 1000;
+
 /**
  * Estimate VO2max using Cooper's formula.
  * @param distanceMeters Distance in meters covered in 12 minutes
@@ -21,6 +23,70 @@ export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): 
   const percentMax = 0.8 + 0.1894393 * Math.exp(-0.012778 * timeMinutes) + 0.2989558 * Math.exp(-0.1932605 * timeMinutes);
   const vo2 = -4.60 + 0.182258 * velocity + 0.000104 * velocity * velocity;
   return vo2 / percentMax;
+}
+
+/**
+ * Parse a positive finite number from unknown input.
+ * Accepts numeric values or strings that are either numeric, MM:SS, or HH:MM:SS.
+ * Returns null for invalid, non-finite, non-positive, or unsupported formats.
+ */
+function toFinitePositiveNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const parts = trimmed.split(':').map((p) => Number(p));
+    if (parts.length === 2 && parts.every((p) => Number.isFinite(p) && p >= 0)) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3 && parts.every((p) => Number.isFinite(p) && p >= 0)) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+  return null;
+}
+
+/**
+ * Try to read GAP (grade-adjusted pace) from Strava raw activity payload.
+ * Returns seconds per kilometer when available.
+ */
+export function extractGapPaceSecondsPerKm(rawData: unknown): number | null {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+  const data = rawData as Record<string, unknown>;
+
+  const paceKeys = ['gap', 'gap_pace', 'grade_adjusted_pace', 'average_grade_adjusted_pace'];
+  for (const key of paceKeys) {
+    const value = toFinitePositiveNumber(data[key]);
+    if (!value) continue;
+    // min/km guardrails first: 2 to 30 min/km, converted to sec/km (×60).
+    if (value >= 2 && value <= 30) return value * 60;
+    // sec/km guardrails for larger numeric values: >30s/km up to 2000s/km (33:20).
+    // 2000 sec/km is a defensive upper bound to reject clearly invalid outliers.
+    if (value > 30 && value <= 2000) return value;
+  }
+
+  const speedKeys = ['gap_speed', 'grade_adjusted_speed', 'average_grade_adjusted_speed'];
+  for (const key of speedKeys) {
+    const speedMps = toFinitePositiveNumber(data[key]);
+    if (!speedMps) continue;
+    // speed guardrails: 0.5 to 12 m/s (~1.8 to 43.2 km/h) to exclude invalid outliers.
+    // METERS_PER_KILOMETER converts m/s speed into sec/km pace.
+    if (speedMps > 0.5 && speedMps < 12) return METERS_PER_KILOMETER / speedMps;
+  }
+
+  return null;
+}
+
+/**
+ * Return run duration adjusted by GAP when available; fallback to recorded duration.
+ */
+export function getGapAdjustedRunDurationSeconds(distanceMeters: number, durationSeconds: number, rawData: unknown): number {
+  const gapPaceSecondsPerKm = extractGapPaceSecondsPerKm(rawData);
+  if (!gapPaceSecondsPerKm || distanceMeters <= 0) return durationSeconds;
+  const gapAdjustedDuration = gapPaceSecondsPerKm * distanceMeters / METERS_PER_KILOMETER;
+  return gapAdjustedDuration > 0 ? gapAdjustedDuration : durationSeconds;
 }
 
 /**

@@ -1,3 +1,9 @@
+export function formatSecondsPerKm(secondsPerKm: number): string {
+  const min = Math.floor(secondsPerKm / 60);
+  const sec = Math.floor(secondsPerKm % 60);
+  return `${min}:${sec.toString().padStart(2, '0')} /km`;
+}
+
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -13,10 +19,7 @@ export function formatDistance(meters: number): string {
 }
 
 export function formatPace(metersPerSecond: number): string {
-  const secPerKm = 1000 / metersPerSecond;
-  const min = Math.floor(secPerKm / 60);
-  const sec = Math.floor(secPerKm % 60);
-  return `${min}:${sec.toString().padStart(2, '0')} /km`;
+  return formatSecondsPerKm(1000 / metersPerSecond);
 }
 
 export function formatDate(iso: string): string {

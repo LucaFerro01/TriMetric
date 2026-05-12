@@ -8,8 +8,7 @@ import { config } from '../config';
 import multer from 'multer';
 import fs from 'fs';
 import { parseFitFile, parseGpxFile } from '../services/fitgpx.service';
-import { aggregateDailyMetrics } from '../services/metrics.service';
-import { estimateCaloriesBurned } from '../services/metrics.service';
+import { aggregateDailyMetrics, estimateCaloriesBurned, extractGapPaceSecondsPerKm } from '../services/metrics.service';
 import { syncStravaActivities } from '../services/strava.service';
 
 const router: Router = Router();
@@ -71,7 +70,10 @@ router.get('/', async (req: Request, res: Response) => {
     .limit(parseInt(limit))
     .offset(parseInt(offset));
 
-  return res.json(rows);
+  return res.json(rows.map((row) => ({
+    ...row,
+    gapPace: extractGapPaceSecondsPerKm(row.rawData),
+  })));
 });
 
 // GET /activities/summary
@@ -123,7 +125,11 @@ router.get('/:id', async (req: Request, res: Response) => {
 
   const [streams] = await db.select().from(streamData).where(eq(streamData.activityId, req.params.id));
 
-  return res.json({ ...activity, streams: streams || null });
+  return res.json({
+    ...activity,
+    gapPace: extractGapPaceSecondsPerKm(activity.rawData),
+    streams: streams || null,
+  });
 });
 
 // DELETE /activities/:id
