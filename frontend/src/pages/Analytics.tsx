@@ -14,7 +14,10 @@ type Vo2Mode = 'run' | 'bike';
 
 function estimateRunVo2max(activity: Activity): number | null {
   if (!activity.distance || !activity.duration || activity.duration <= 0) return null;
-  const speedMetersPerMinute = activity.distance / (activity.duration / 60);
+  const gapAdjustedDuration = activity.gapPace
+    ? activity.gapPace * (activity.distance / 1000)
+    : activity.duration;
+  const speedMetersPerMinute = activity.distance / (gapAdjustedDuration / 60);
   const oxygenCost = -4.60 + 0.182258 * speedMetersPerMinute + 0.000104 * speedMetersPerMinute * speedMetersPerMinute;
   return oxygenCost / 0.83;
 }
@@ -162,7 +165,7 @@ export default function Analytics() {
                 <div className="rounded-lg border border-slate-700 bg-slate-900 p-4">
                   <div className="text-slate-400 text-sm mb-2">Estimated VO₂max</div>
                   <div className="text-3xl font-bold text-green-400">{selectedRunVo2 ? selectedRunVo2.toFixed(1) : '–'}</div>
-                  <div className="text-slate-500 text-sm mt-1">Daniels / pace-based estimate</div>
+                  <div className="text-slate-500 text-sm mt-1">Daniels / pace-based estimate (uses GAP if available)</div>
                 </div>
               </div>
             </div>

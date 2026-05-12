@@ -23,6 +23,61 @@ export function estimateVO2MaxRun(distanceMeters: number, timeSeconds: number): 
   return vo2 / percentMax;
 }
 
+function toFinitePositiveNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    const parts = trimmed.split(':').map((p) => Number(p));
+    if (parts.length === 2 && parts.every((p) => Number.isFinite(p) && p >= 0)) {
+      return parts[0] * 60 + parts[1];
+    }
+    if (parts.length === 3 && parts.every((p) => Number.isFinite(p) && p >= 0)) {
+      return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    }
+  }
+  return null;
+}
+
+/**
+ * Try to read GAP (grade-adjusted pace) from Strava raw activity payload.
+ * Returns seconds per kilometer when available.
+ */
+export function extractGapPaceSecondsPerKm(rawData: unknown): number | null {
+  if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) return null;
+  const data = rawData as Record<string, unknown>;
+
+  const paceKeys = ['gap', 'gap_pace', 'grade_adjusted_pace', 'average_grade_adjusted_pace'];
+  for (const key of paceKeys) {
+    const value = toFinitePositiveNumber(data[key]);
+    if (!value) continue;
+    // Accept either sec/km (typical 120-1200) or min/km (typical 2-20)
+    if (value >= 90 && value <= 2000) return value;
+    if (value >= 2 && value <= 30) return value * 60;
+  }
+
+  const speedKeys = ['gap_speed', 'grade_adjusted_speed', 'average_grade_adjusted_speed'];
+  for (const key of speedKeys) {
+    const speedMps = toFinitePositiveNumber(data[key]);
+    if (!speedMps) continue;
+    if (speedMps > 0.5 && speedMps < 12) return 1000 / speedMps;
+  }
+
+  return null;
+}
+
+/**
+ * Return run duration adjusted by GAP when available; fallback to recorded duration.
+ */
+export function getGapAdjustedRunDurationSeconds(distanceMeters: number, durationSeconds: number, rawData: unknown): number {
+  const gapPaceSecondsPerKm = extractGapPaceSecondsPerKm(rawData);
+  if (!gapPaceSecondsPerKm || distanceMeters <= 0) return durationSeconds;
+  const gapAdjustedDuration = gapPaceSecondsPerKm * (distanceMeters / 1000);
+  return gapAdjustedDuration > 0 ? gapAdjustedDuration : durationSeconds;
+}
+
 /**
  * Estimate VO2max from a cycling effort using power-to-weight as a proxy.
  */

@@ -13,6 +13,9 @@ interface Props {
 
 export default function ActivityCard({ activity }: Props) {
   const emoji = typeEmoji[activity.activityType] || '🏅';
+  const gapPace = activity.gapPace
+    ? `${Math.floor(activity.gapPace / 60)}:${Math.floor(activity.gapPace % 60).toString().padStart(2, '0')} /km`
+    : null;
 
   return (
     <Link to={`/activities/${activity.id}`} className="block bg-slate-800 rounded-xl p-4 border border-slate-700 hover:border-orange-500/50 transition-colors">
@@ -63,6 +66,12 @@ export default function ActivityCard({ activity }: Props) {
           <div>
             <div className="text-slate-400">Avg Power</div>
             <div className="font-medium">{activity.avgPower} W</div>
+          </div>
+        )}
+        {activity.activityType === 'run' && gapPace && (
+          <div>
+            <div className="text-slate-400">GAP</div>
+            <div className="font-medium">{gapPace}</div>
           </div>
         )}
       </div>
